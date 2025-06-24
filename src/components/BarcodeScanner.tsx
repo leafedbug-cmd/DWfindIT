@@ -1,137 +1,151 @@
-import React, { useEffect, useState } from 'react';
-import { Html5QrcodeScanner, Html5Qrcode } from 'html5-qrcode';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { Html5QrcodeScanner, Html5Qrcode, Html5QrcodeCameraScanConfig } from 'html5-qrcode';
 
 interface BarcodeScannerProps {
   onScanSuccess: (barcode: string) => void;
   onScanError?: (error: string) => void;
 }
 
-export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ 
-  onScanSuccess, 
-  onScanError 
+const SCAN_INTERVAL_MS = 2000;
+const QR_BOX = { width: 250, height: 250 };
+
+export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
+  onScanSuccess,
+  onScanError,
 }) => {
   const [isIOS, setIsIOS] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lastScanned, setLastScanned] = useState('');
+  const lastScanTime = useRef(0);
+  const scannerRef = useRef<Html5QrcodeScanner | null>(null);
+  const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
 
-  useEffect(() => {
-    // Detect iOS devices
-    const isIOSDevice = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
-    setIsIOS(isIOSDevice);
+  const handleSuccessfulScan = useCallback((decodedText: string) => {
+    const now = Date.now();
+    if (decodedText === lastScanned && now - lastScanTime.current < SCAN_INTERVAL_MS) return;
 
-    if (isIOSDevice) {
-      // iOS-specific implementation
-      initIOSScanner();
-    } else {
-      // Android/Desktop implementation
-      initStandardScanner();
+    lastScanTime.current = now;
+    setLastScanned(decodedText);
+    onScanSuccess(decodedText);
+    flashSuccessIndicator();
+  }, [lastScanned, onScanSuccess]);
+
+  const flashSuccessIndicator = () => {
+    const el = document.getElementById('reader');
+    if (el) {
+      el.style.borderColor = '#10b981';
+      el.style.borderWidth = '4px';
+      setTimeout(() => {
+        el.style.borderColor = '#e5e7eb';
+        el.style.borderWidth = '2px';
+      }, 300);
     }
+  };
 
-    return () => {
-      // Cleanup
-      const element = document.getElementById("reader");
-      if (element) {
-        element.innerHTML = "";
-      }
-    };
-  }, [onScanSuccess]);
-
-  const initStandardScanner = () => {
-    const scanner = new Html5QrcodeScanner(
-      "reader",
-      { 
-        fps: 10, 
-        qrbox: { width: 250, height: 250 },
+  const initStandardScanner = useCallback(() => {
+    scannerRef.current = new Html5QrcodeScanner(
+      'reader',
+      {
+        fps: 10,
+        qrbox: QR_BOX,
         rememberLastUsedCamera: true,
         aspectRatio: 1.0,
-        showTorchButtonIfSupported: true
+        showTorchButtonIfSupported: true,
+        disableFlip: false,
       },
       false
     );
 
-    scanner.render(
-      (decodedText) => {
-        console.log(`Code scanned: ${decodedText}`);
-        onScanSuccess(decodedText);
-      },
-      (error) => {
-        if (!error.includes("NotFoundException") && !error.includes("No MultiFormat Readers")) {
-          console.log(error);
+    scannerRef.current.render(
+      handleSuccessfulScan,
+      (err) => {
+        if (typeof err === 'string' && !err.includes('NotFoundException')) {
+          console.debug('Scanner Error:', err);
         }
       }
     );
-  };
+  }, [handleSuccessfulScan]);
 
-  const initIOSScanner = async () => {
+  const initIOSScanner = useCallback(async () => {
     try {
-      // For iOS, try a more direct approach
-      const html5QrCode = new Html5Qrcode("reader");
-      
-      // iOS-specific config
-      const config = {
+      html5QrCodeRef.current = new Html5Qrcode('reader');
+      const cameras = await Html5Qrcode.getCameras();
+      if (!cameras.length) throw new Error('No cameras found');
+
+      const backCamera = cameras.find(c =>
+        c.label.toLowerCase().includes('back') || c.label.toLowerCase().includes('environment')
+      ) || cameras[0];
+
+      const config: Html5QrcodeCameraScanConfig = {
         fps: 10,
-        qrbox: { width: 250, height: 250 },
-        aspectRatio: 1.777778 // 16:9 aspect ratio works better on iOS
+        qrbox: QR_BOX,
+        aspectRatio: 1.777778,
       };
 
-      // Get available cameras
-      const cameras = await Html5Qrcode.getCameras();
-      
-      if (cameras && cameras.length > 0) {
-        // Prefer back camera on iOS
-        const backCamera = cameras.find(camera => 
-          camera.label.toLowerCase().includes('back') || 
-          camera.label.toLowerCase().includes('environment')
-        ) || cameras[0];
-
-        await html5QrCode.start(
-          backCamera.id,
-          config,
-          (decodedText) => {
-            console.log(`iOS scan: ${decodedText}`);
-            onScanSuccess(decodedText);
-          },
-          (errorMessage) => {
-            if (!errorMessage.includes("NotFoundException")) {
-              console.debug(errorMessage);
-            }
+      await html5QrCodeRef.current.start(
+        backCamera.id,
+        config,
+        handleSuccessfulScan,
+        (err) => {
+          if (typeof err === 'string' && !err.includes('NotFoundException')) {
+            console.debug('iOS Scan Error:', err);
           }
-        );
-      } else {
-        throw new Error("No cameras found");
-      }
+        }
+      );
     } catch (err: any) {
-      console.error("iOS Scanner Error:", err);
-      setError("Camera not available. Try adding this site to your home screen.");
-      if (onScanError) onScanError(err.message);
+      console.error('iOS Scanner Error:', err);
+      setError('Camera not available. Try adding this site to your home screen.');
+      onScanError?.(err.message);
     }
-  };
+  }, [handleSuccessfulScan, onScanError]);
+
+  useEffect(() => {
+    const iOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+    setIsIOS(iOS);
+
+    iOS ? initIOSScanner() : initStandardScanner();
+
+    return () => {
+      scannerRef.current?.clear().catch(console.error);
+      html5QrCodeRef.current?.stop().catch(console.error);
+    };
+  }, [initIOSScanner, initStandardScanner]);
 
   if (error && isIOS) {
     return (
       <div className="p-4 bg-yellow-50 rounded-lg">
         <h3 className="font-medium text-yellow-800 mb-2">iOS Camera Access</h3>
         <p className="text-sm text-yellow-700 mb-3">{error}</p>
-        <div className="text-xs text-gray-600 space-y-2">
-          <p className="font-semibold">For best results on iPhone:</p>
-          <ol className="list-decimal list-inside space-y-1">
-            <li>Open this site in Safari (not Chrome)</li>
-            <li>Tap the Share button</li>
-            <li>Select "Add to Home Screen"</li>
-            <li>Open the app from your home screen</li>
-          </ol>
-          <p className="mt-3">Or try:</p>
-          <p>Settings → Safari → Camera → Ask/Allow</p>
-        </div>
+        <ol className="list-decimal list-inside text-xs text-gray-600 space-y-1">
+          <li>Open this site in Safari (not Chrome)</li>
+          <li>Tap the Share button</li>
+          <li>Select "Add to Home Screen"</li>
+          <li>Open the app from your home screen</li>
+        </ol>
       </div>
     );
   }
 
   return (
     <div className="w-full">
-      <div id="reader" style={{ width: "100%" }} />
+      <div
+        id="reader"
+        style={{
+          width: '100%',
+          border: '2px solid #e5e7eb',
+          borderRadius: '8px',
+          overflow: 'hidden',
+          transition: 'border-color 0.3s ease',
+        }}
+      />
+      {lastScanned && (
+        <div className="mt-2 text-xs text-center text-gray-500">
+          Last scanned: {lastScanned}
+        </div>
+      )}
       {isIOS && (
-        <div className="mt-2 text-xs text-gray-500 text-center">
-          Using iOS camera mode
+        <div className="mt-1 text-xs text-gray-500 text-center">
+          Using iOS camera mode - Scanner stays active
         </div>
       )}
     </div>
