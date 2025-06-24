@@ -96,18 +96,49 @@ export const ScanPage: React.FC = () => {
         return;
       }
       
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Look up the REAL part in your parts table
+      const { data: partData, error: partError } = await supabase
+        .from('parts')
+        .select('*')
+        .eq('part_number', barcode)
+        .single();
+
+      if (partError || !partData) {
+        setScanError(`Part ${barcode} not found in inventory`);
+        return;
+      }
       
-      const partInfo = {
-        barcode,
-        part_number: `P${barcode.substring(0, 6)}`,
-        bin_location: `A${Math.floor(Math.random() * 10) + 1}-B${Math.floor(Math.random() * 20) + 1}`,
-        list_id: currentList.id,
-        quantity: 1,
-        notes: ''
-      };
-      
-      await addItem(partInfo);
+      // Check if this item already exists in the current list
+      const { data: existingItem } = await supabase
+        .from('scan_items')
+        .select('*')
+        .eq('barcode', barcode)
+        .eq('list_id', currentList.id)
+        .single();
+
+      if (existingItem) {
+        // Update quantity instead of creating duplicate
+        const { error: updateError } = await supabase
+          .from('scan_items')
+          .update({ quantity: existingItem.quantity + 1 })
+          .eq('id', existingItem.id);
+
+        if (updateError) throw updateError;
+        
+        setScanError(`Updated quantity for ${barcode} to ${existingItem.quantity + 1}`);
+      } else {
+        // Use REAL data from your parts table
+        const partInfo = {
+          barcode: barcode,
+          part_number: partData.part_number,
+          bin_location: partData.bin_location,
+          list_id: currentList.id,
+          quantity: 1,
+          notes: ''
+        };
+        
+        await addItem(partInfo);
+      }
       
     } catch (error: any) {
       setScanError(error.message || 'Failed to process scan');
