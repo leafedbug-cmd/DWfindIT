@@ -1,6 +1,5 @@
 import React, { useEffect } from 'react';
 import { Html5QrcodeScanner } from 'html5-qrcode';
-import { AlertCircle } from 'lucide-react';
 
 interface BarcodeScannerProps {
   onScanSuccess: (barcode: string) => void;
@@ -17,10 +16,9 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
       { 
         fps: 10, 
         qrbox: { width: 250, height: 250 },
-        rememberLastUsedCamera: true,
-        supportedScanTypes: ["camera"]
+        rememberLastUsedCamera: true
       },
-      false
+      /* verbose= */ false
     );
 
     scanner.render(
@@ -29,7 +27,7 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
         onScanSuccess(decodedText);
       },
       (error) => {
-        if (!error.includes("NotFoundException")) {
+        if (!error.includes("NotFoundException") && !error.includes("No MultiFormat Readers")) {
           console.log(error);
         }
       }
