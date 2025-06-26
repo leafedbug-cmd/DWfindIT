@@ -6,6 +6,8 @@ interface BarcodeScannerProps {
   onScanError?: (error: string) => void;
 }
 
+const SCAN_COOLDOWN_MS = 3000; // 3 seconds between scans of the same barcode
+
 export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
   onScanSuccess,
   onScanError,
@@ -14,8 +16,10 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
   const [selectedCameraId, setSelectedCameraId] = useState<string>('');
   const [lastScanned, setLastScanned] = useState('');
   const [isScanning, setIsScanning] = useState(false);
+  const [cooldownRemaining, setCooldownRemaining] = useState(0);
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
   const lastScanTime = useRef(0);
+  const cooldownInterval = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     // Initialize scanner
@@ -41,6 +45,9 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
       if (html5QrCodeRef.current?.isScanning) {
         html5QrCodeRef.current.stop().catch(console.error);
       }
+      if (cooldownInterval.current) {
+        clearInterval(cooldownInterval.current);
+      }
     };
   }, []);
 
@@ -49,6 +56,22 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
       startScanner();
     }
   }, [selectedCameraId]);
+
+  const startCooldown = () => {
+    setCooldownRemaining(SCAN_COOLDOWN_MS / 1000);
+    
+    cooldownInterval.current = setInterval(() => {
+      setCooldownRemaining(prev => {
+        if (prev <= 1) {
+          if (cooldownInterval.current) {
+            clearInterval(cooldownInterval.current);
+          }
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
 
   const startScanner = async () => {
     if (!html5QrCodeRef.current || !selectedCameraId || isScanning) return;
@@ -64,21 +87,30 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
         },
         (decodedText) => {
           const now = Date.now();
-          // Prevent duplicate scans within 2 seconds
-          if (decodedText !== lastScanned || now - lastScanTime.current > 2000) {
-            console.log(`Scanned: ${decodedText}`);
-            setLastScanned(decodedText);
-            lastScanTime.current = now;
-            onScanSuccess(decodedText);
-            
-            // Flash border
-            const reader = document.getElementById('reader');
-            if (reader) {
-              reader.style.borderColor = '#10b981';
-              setTimeout(() => {
-                reader.style.borderColor = '#e5e7eb';
-              }, 300);
-            }
+          
+          // Check if we're in cooldown for this specific barcode
+          if (decodedText === lastScanned && now - lastScanTime.current < SCAN_COOLDOWN_MS) {
+            console.log(`Ignoring duplicate scan of ${decodedText} (cooldown active)`);
+            return;
+          }
+          
+          console.log(`Scanned: ${decodedText}`);
+          setLastScanned(decodedText);
+          lastScanTime.current = now;
+          onScanSuccess(decodedText);
+          
+          // Start cooldown timer
+          startCooldown();
+          
+          // Flash border green
+          const reader = document.getElementById('reader');
+          if (reader) {
+            reader.style.borderColor = '#10b981';
+            reader.style.borderWidth = '4px';
+            setTimeout(() => {
+              reader.style.borderColor = '#e5e7eb';
+              reader.style.borderWidth = '2px';
+            }, 300);
           }
         },
         (errorMessage) => {
@@ -156,6 +188,11 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
       {lastScanned && (
         <div className="mt-2 text-xs text-center text-gray-500">
           Last scanned: {lastScanned}
+          {cooldownRemaining > 0 && (
+            <span className="ml-2 text-orange-600">
+              (cooldown: {cooldownRemaining}s)
+            </span>
+          )}
         </div>
       )}
     </div>
