@@ -7,7 +7,7 @@ import { BottomNav } from '../components/BottomNav';
 import { useListStore } from '../store/listStore';
 import { useScanItemStore } from '../store/scanItemStore';
 import { supabase } from '../services/supabase';
-import { Search, Package } from 'lucide-react';
+import { Search, Package, Eye, ListPlus } from 'lucide-react';
 
 export const ScanPage: React.FC = () => {
   const navigate = useNavigate();
@@ -17,6 +17,8 @@ export const ScanPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [viewMode, setViewMode] = useState<'add' | 'view'>('view'); // Default to view mode
+  const [lastScannedPart, setLastScannedPart] = useState<any>(null);
   
   const { lists, fetchLists, currentList, setCurrentList } = useListStore();
   const { recentScan, addItem, clearRecentScan, isLoading } = useScanItemStore();
@@ -58,6 +60,17 @@ export const ScanPage: React.FC = () => {
   };
 
   const handleSelectPart = async (part: any) => {
+    if (viewMode === 'view') {
+      // Just display the part info
+      setLastScannedPart(part);
+      setScanSuccess(`${part.part_number} → Bin: ${part.bin_location}`);
+      setTimeout(() => setScanSuccess(null), 5000);
+      setSearchQuery('');
+      setSearchResults([]);
+      return;
+    }
+
+    // Add mode - existing logic
     try {
       setIsProcessing(true);
       setScanError(null);
@@ -79,6 +92,8 @@ export const ScanPage: React.FC = () => {
       await addItem(partInfo);
       setSearchQuery('');
       setSearchResults([]);
+      setScanSuccess(`Added ${part.part_number} to list`);
+      setTimeout(() => setScanSuccess(null), 3000);
       
     } catch (error: any) {
       setScanError(error.message || 'Failed to add part');
@@ -88,17 +103,13 @@ export const ScanPage: React.FC = () => {
   };
   
   const handleScan = async (barcode: string) => {
-    // Don't process if already processing to prevent duplicates
     if (isProcessing) return;
 
     try {
       setIsProcessing(true);
       setScanError(null);
       setScanSuccess(null);
-
-      if (!currentList) {
-        throw new Error("No list selected. Please select or create a list first.");
-      }
+      setLastScannedPart(null);
 
       const { data: partData, error: partError } = await supabase
         .from('parts')
@@ -108,6 +119,21 @@ export const ScanPage: React.FC = () => {
 
       if (partError || !partData) {
         throw new Error(`Part "${barcode}" not found in inventory.`);
+      }
+
+      // Store the scanned part for display
+      setLastScannedPart(partData);
+
+      if (viewMode === 'view') {
+        // View mode - just display the bin location
+        setScanSuccess(`${barcode} → Bin: ${partData.bin_location}`);
+        setTimeout(() => setScanSuccess(null), 5000); // Show for 5 seconds
+        return;
+      }
+
+      // Add mode - existing logic
+      if (!currentList) {
+        throw new Error("No list selected. Please select or create a list first.");
       }
 
       const { data: existingItem } = await supabase
@@ -127,8 +153,6 @@ export const ScanPage: React.FC = () => {
         if (updateError) throw updateError;
 
         setScanSuccess(`Updated ${barcode} quantity to ${newQuantity}`);
-        
-        // Clear success message after 2 seconds
         setTimeout(() => setScanSuccess(null), 2000);
       } else {
         const partInfo = {
@@ -142,15 +166,11 @@ export const ScanPage: React.FC = () => {
 
         await addItem(partInfo);
         setScanSuccess(`Added ${barcode} - Bin: ${partData.bin_location}`);
-        
-        // Clear success message after 2 seconds
         setTimeout(() => setScanSuccess(null), 2000);
       }
     } catch (error: any) {
       console.error("Scan error:", error);
       setScanError(error.message || "Failed to process scan");
-      
-      // Clear error after 3 seconds
       setTimeout(() => setScanError(null), 3000);
     } finally {
       setIsProcessing(false);
@@ -159,7 +179,6 @@ export const ScanPage: React.FC = () => {
   
   const handleScanError = (error: string) => {
     setScanError(error);
-    // Clear error after 3 seconds
     setTimeout(() => setScanError(null), 3000);
   };
   
@@ -188,11 +207,46 @@ export const ScanPage: React.FC = () => {
         <div className="mb-6">
           <div className="mb-2 flex items-center justify-between">
             <h2 className="text-lg font-medium text-gray-900">Scanner</h2>
-            {currentList && (
-              <div className="text-sm bg-orange-50 text-orange-700 px-2 py-1 rounded-full">
-                List: {currentList.name}
+            <div className="flex items-center gap-2">
+              {/* Mode Toggle */}
+              <div className="flex bg-gray-200 rounded-lg p-1">
+                <button
+                  onClick={() => setViewMode('view')}
+                  className={`flex items-center px-3 py-1 rounded text-sm transition-colors ${
+                    viewMode === 'view' 
+                      ? 'bg-white text-gray-900 shadow-sm' 
+                      : 'text-gray-600'
+                  }`}
+                >
+                  <Eye className="w-4 h-4 mr-1" />
+                  View
+                </button>
+                <button
+                  onClick={() => setViewMode('add')}
+                  className={`flex items-center px-3 py-1 rounded text-sm transition-colors ${
+                    viewMode === 'add' 
+                      ? 'bg-white text-gray-900 shadow-sm' 
+                      : 'text-gray-600'
+                  }`}
+                >
+                  <ListPlus className="w-4 h-4 mr-1" />
+                  Add
+                </button>
               </div>
-            )}
+              
+              {viewMode === 'add' && currentList && (
+                <div className="text-sm bg-orange-50 text-orange-700 px-2 py-1 rounded-full">
+                  List: {currentList.name}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Mode indicator */}
+          <div className="mb-2 text-sm text-gray-600">
+            Mode: <span className="font-medium">
+              {viewMode === 'view' ? 'View Only (bin lookup)' : 'Add to List'}
+            </span>
           </div>
 
           {/* Search Bar */}
@@ -232,8 +286,31 @@ export const ScanPage: React.FC = () => {
           
           {/* Success Message */}
           {scanSuccess && (
-            <div className="mb-2 p-2 bg-green-50 text-green-700 rounded text-sm">
+            <div className={`mb-2 p-3 rounded text-sm ${
+              viewMode === 'view' 
+                ? 'bg-blue-50 text-blue-700' 
+                : 'bg-green-50 text-green-700'
+            }`}>
               ✓ {scanSuccess}
+            </div>
+          )}
+          
+          {/* Last Scanned Part Info (View Mode Only) */}
+          {viewMode === 'view' && lastScannedPart && (
+            <div className="mb-4 p-4 bg-white rounded-lg shadow-sm border border-gray-200">
+              <h3 className="font-medium text-gray-900 mb-2">Part Information</h3>
+              <div className="space-y-1 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Part Number:</span>
+                  <span className="font-medium">{lastScannedPart.part_number}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Bin Location:</span>
+                  <span className="font-medium text-lg text-orange-600">
+                    {lastScannedPart.bin_location}
+                  </span>
+                </div>
+              </div>
             </div>
           )}
           
@@ -245,17 +322,19 @@ export const ScanPage: React.FC = () => {
           </div>
         </div>
         
-        <div>
-          <h2 className="text-lg font-medium text-gray-900 mb-2">Scan Result</h2>
-          
-          <ScanResult
-            item={recentScan}
-            isLoading={isProcessing}
-            error={scanError}
-            onSave={handleSaveItem}
-            clearResult={clearRecentScan}
-          />
-        </div>
+        {viewMode === 'add' && (
+          <div>
+            <h2 className="text-lg font-medium text-gray-900 mb-2">Scan Result</h2>
+            
+            <ScanResult
+              item={recentScan}
+              isLoading={isProcessing}
+              error={scanError}
+              onSave={handleSaveItem}
+              clearResult={clearRecentScan}
+            />
+          </div>
+        )}
       </main>
       
       <BottomNav />
