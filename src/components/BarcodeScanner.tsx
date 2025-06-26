@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Html5QrcodeScanner, Html5Qrcode, Html5QrcodeCameraScanConfig } from 'html5-qrcode';
+import { Html5Qrcode, Html5QrcodeScanner, Html5QrcodeCameraScanConfig, CameraDevice } from 'html5-qrcode';
 
 interface BarcodeScannerProps {
   onScanSuccess: (barcode: string) => void;
@@ -14,11 +14,13 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
   onScanError,
 }) => {
   const [isIOS, setIsIOS] = useState(false);
+  const [cameras, setCameras] = useState<CameraDevice[]>([]);
+  const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lastScanned, setLastScanned] = useState('');
   const lastScanTime = useRef(0);
-  const scannerRef = useRef<Html5QrcodeScanner | null>(null);
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
+  const scannerRef = useRef<Html5QrcodeScanner | null>(null);
 
   const handleSuccessfulScan = useCallback((decodedText: string) => {
     const now = Date.now();
@@ -42,39 +44,14 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
     }
   };
 
-  const initStandardScanner = useCallback(() => {
-    scannerRef.current = new Html5QrcodeScanner(
-      'reader',
-      {
-        fps: 10,
-        qrbox: QR_BOX,
-        rememberLastUsedCamera: true,
-        aspectRatio: 1.0,
-        showTorchButtonIfSupported: true,
-        disableFlip: false,
-      },
-      false
-    );
-
-    scannerRef.current.render(
-      handleSuccessfulScan,
-      (err) => {
-        if (typeof err === 'string' && !err.includes('NotFoundException')) {
-          console.debug('Scanner Error:', err);
-        }
-      }
-    );
-  }, [handleSuccessfulScan]);
-
-  const initIOSScanner = useCallback(async () => {
+  const startScannerWithCamera = useCallback(async (cameraId: string) => {
     try {
-      html5QrCodeRef.current = new Html5Qrcode('reader');
-      const cameras = await Html5Qrcode.getCameras();
-      if (!cameras.length) throw new Error('No cameras found');
-
-      const backCamera = cameras.find(c =>
-        c.label.toLowerCase().includes('back') || c.label.toLowerCase().includes('environment')
-      ) || cameras[0];
+      if (html5QrCodeRef.current) {
+        await html5QrCodeRef.current.stop();
+        await html5QrCodeRef.current.clear();
+      } else {
+        html5QrCodeRef.current = new Html5Qrcode("reader");
+      }
 
       const config: Html5QrcodeCameraScanConfig = {
         fps: 10,
@@ -83,33 +60,56 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
       };
 
       await html5QrCodeRef.current.start(
-        backCamera.id,
+        cameraId,
         config,
         handleSuccessfulScan,
-        (err) => {
-          if (typeof err === 'string' && !err.includes('NotFoundException')) {
-            console.debug('iOS Scan Error:', err);
+        (errorMessage) => {
+          if (typeof errorMessage === "string" && !errorMessage.includes("NotFoundException")) {
+            console.debug("Scan error:", errorMessage);
           }
         }
       );
     } catch (err: any) {
-      console.error('iOS Scanner Error:', err);
-      setError('Camera not available. Try adding this site to your home screen.');
+      console.error("Scanner start error:", err);
+      setError(err.message);
       onScanError?.(err.message);
     }
   }, [handleSuccessfulScan, onScanError]);
+
+  const initScanner = useCallback(async () => {
+    const devices = await Html5Qrcode.getCameras();
+    if (devices.length === 0) throw new Error("No cameras found");
+
+    setCameras(devices);
+
+    const preferred = devices.find(cam =>
+      cam.label.toLowerCase().includes("back") || cam.label.toLowerCase().includes("environment")
+    ) || devices[0];
+
+    setSelectedCameraId(preferred.id);
+  }, []);
 
   useEffect(() => {
     const iOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
     setIsIOS(iOS);
 
-    iOS ? initIOSScanner() : initStandardScanner();
+    initScanner().catch(err => {
+      console.error("Init scanner failed:", err);
+      setError(err.message);
+      onScanError?.(err.message);
+    });
 
     return () => {
       scannerRef.current?.clear().catch(console.error);
       html5QrCodeRef.current?.stop().catch(console.error);
     };
-  }, [initIOSScanner, initStandardScanner]);
+  }, [initScanner, onScanError]);
+
+  useEffect(() => {
+    if (selectedCameraId) {
+      startScannerWithCamera(selectedCameraId);
+    }
+  }, [selectedCameraId, startScannerWithCamera]);
 
   if (error && isIOS) {
     return (
@@ -128,6 +128,24 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
 
   return (
     <div className="w-full">
+      {cameras.length > 1 && (
+        <div className="mb-2 text-sm text-gray-700">
+          <label htmlFor="camera-select" className="mr-2 font-medium">Camera:</label>
+          <select
+            id="camera-select"
+            value={selectedCameraId || ''}
+            onChange={(e) => setSelectedCameraId(e.target.value)}
+            className="border rounded px-2 py-1 text-sm"
+          >
+            {cameras.map((camera) => (
+              <option key={camera.id} value={camera.id}>
+                {camera.label || `Camera ${camera.id}`}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       <div
         id="reader"
         style={{
