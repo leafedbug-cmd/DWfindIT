@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Html5Qrcode, Html5QrcodeScanner, Html5QrcodeCameraScanConfig, CameraDevice } from 'html5-qrcode';
+import { Html5Qrcode, Html5QrcodeCameraScanConfig, CameraDevice } from 'html5-qrcode';
 
 interface BarcodeScannerProps {
   onScanSuccess: (barcode: string) => void;
@@ -20,7 +20,6 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
   const [lastScanned, setLastScanned] = useState('');
   const lastScanTime = useRef(0);
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
-  const scannerRef = useRef<Html5QrcodeScanner | null>(null);
 
   const handleSuccessfulScan = useCallback((decodedText: string) => {
     const now = Date.now();
@@ -46,12 +45,16 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
 
   const startScannerWithCamera = useCallback(async (cameraId: string) => {
     try {
-      if (html5QrCodeRef.current) {
-        await html5QrCodeRef.current.stop();
-        await html5QrCodeRef.current.clear();
-      } else {
+      if (!html5QrCodeRef.current) {
         html5QrCodeRef.current = new Html5Qrcode("reader");
       }
+
+      if (html5QrCodeRef.current.isScanning) {
+        await html5QrCodeRef.current.stop();
+        await html5QrCodeRef.current.clear();
+      }
+
+      await new Promise(res => setTimeout(res, 100)); // Wait for DOM to stabilize
 
       const config: Html5QrcodeCameraScanConfig = {
         fps: 10,
@@ -100,14 +103,17 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
     });
 
     return () => {
-      scannerRef.current?.clear().catch(console.error);
       html5QrCodeRef.current?.stop().catch(console.error);
+      html5QrCodeRef.current?.clear().catch(console.error);
     };
   }, [initScanner, onScanError]);
 
   useEffect(() => {
     if (selectedCameraId) {
-      startScannerWithCamera(selectedCameraId);
+      const timeout = setTimeout(() => {
+        startScannerWithCamera(selectedCameraId);
+      }, 300); // slight delay to avoid white screen bug
+      return () => clearTimeout(timeout);
     }
   }, [selectedCameraId, startScannerWithCamera]);
 
