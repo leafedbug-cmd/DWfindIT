@@ -8,31 +8,32 @@ import { BottomNav } from '../components/BottomNav'
 import { useListStore } from '../store/listStore'
 import { useScanItemStore } from '../store/scanItemStore'
 import { useStore } from '../contexts/StoreContext'
+import { supabase } from '../services/supabase'
 
 export const ScanPage: React.FC = () => {
   const navigate = useNavigate()
   const [scanError, setScanError] = useState<string | null>(null)
   const [scanSuccess, setScanSuccess] = useState<string | null>(null)
-  const [isProcessing, setIsProcessing] = useState(false)
+  const [isProcessing, setIsProcessing] = useState<boolean>(false)
   const [lastScannedPart, setLastScannedPart] = useState<any>(null)
 
   const { lists, fetchLists, currentList, setCurrentList } = useListStore()
   const { recentScan, addItem, clearRecentScan, isLoading: isItemLoading } = useScanItemStore()
   const { selectedStore, isLoading: isStoreLoading } = useStore()
 
-  // load available lists on mount
+  // Load available lists on mount
   useEffect(() => {
     if (!lists.length) fetchLists()
   }, [lists, fetchLists])
 
-  // pick a default list
+  // Pick a default list
   useEffect(() => {
     if (lists.length > 0 && !currentList) {
       setCurrentList(lists[0])
     }
   }, [lists, currentList, setCurrentList])
 
-  // handle a successful barcode scan
+  // Handle a successful barcode scan
   const handleScan = async (barcode: string) => {
     if (isProcessing) return
     setScanError(null)
@@ -49,7 +50,7 @@ export const ScanPage: React.FC = () => {
         .single()
 
       if (partError || !partData) {
-        throw new Error(`Part "${barcode}" not found in your store (${selectedStore}).`)
+        throw new Error(`Part "${barcode}" not found in store ${selectedStore}`)
       }
 
       setLastScannedPart(partData)
@@ -64,14 +65,14 @@ export const ScanPage: React.FC = () => {
     }
   }
 
-  // handle scanner errors
+  // Handle scanner errors
   const handleScanError = (error: string) => {
     setScanError(error)
     setTimeout(() => setScanError(null), 3000)
   }
 
-  // save modified scan item
-  const handleSaveItem = async (updates: any) => {
+  // Save modified scan item to list
+  const handleSaveItem = async (updates: Partial<any>) => {
     if (!lastScannedPart || !currentList) return
     setIsProcessing(true)
     try {
@@ -86,6 +87,7 @@ export const ScanPage: React.FC = () => {
       setScanSuccess(`Added ${lastScannedPart.part_number} to list`)
       setTimeout(() => setScanSuccess(null), 3000)
     } catch (err: any) {
+      console.error('Save error:', err)
       setScanError(err.message || 'Failed to save item')
       setTimeout(() => setScanError(null), 3000)
     } finally {
@@ -100,21 +102,13 @@ export const ScanPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col pb-16">
       <Header title="Scan Barcode" showBackButton />
-
       <main className="flex-1 p-4 space-y-4">
         {/* Error / Success banners */}
-        {scanError && (
-          <div className="p-2 bg-red-100 text-red-800 rounded">{scanError}</div>
-        )}
-        {scanSuccess && (
-          <div className="p-2 bg-green-100 text-green-800 rounded">{scanSuccess}</div>
-        )}
+        {scanError && <div className="p-2 bg-red-100 text-red-800 rounded">{scanError}</div>}
+        {scanSuccess && <div className="p-2 bg-green-100 text-green-800 rounded">{scanSuccess}</div>}
 
         {/* Camera Scanner */}
-        <BarcodeScanner
-          onScanSuccess={handleScan}
-          onScanError={handleScanError}
-        />
+        <BarcodeScanner onScanSuccess={handleScan} onScanError={handleScanError} />
 
         {/* Scan Result Details */}
         <ScanResult
@@ -125,9 +119,8 @@ export const ScanPage: React.FC = () => {
           clearResult={clearRecentScan}
         />
       </main>
-
       <BottomNav />
     </div>
   )
-// Note: This code assumes you have the necessary imports and context setup for supabase and other components.
-// Make sure to adjust the supabase queries and context usage according to your actual setup.
+}
+// export default ScanPage
