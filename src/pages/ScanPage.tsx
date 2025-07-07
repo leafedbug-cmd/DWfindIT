@@ -5,122 +5,106 @@ import { BarcodeScanner } from '../components/BarcodeScanner'
 import { ScanResult } from '../components/ScanResult'
 import { Header } from '../components/Header'
 import { BottomNav } from '../components/BottomNav'
+import { useStore } from '../contexts/StoreContext'
 import { useListStore } from '../store/listStore'
 import { useScanItemStore } from '../store/scanItemStore'
-import { useStore } from '../contexts/StoreContext'
-import { supabase } from '../services/supabase'
 
 export const ScanPage: React.FC = () => {
   const navigate = useNavigate()
-  const [scanError, setScanError] = useState<string | null>(null)
-  const [scanSuccess, setScanSuccess] = useState<string | null>(null)
-  const [isProcessing, setIsProcessing] = useState<boolean>(false)
-  const [lastScannedPart, setLastScannedPart] = useState<any>(null)
-
-  const { lists, fetchLists, currentList, setCurrentList } = useListStore()
-  const { recentScan, addItem, clearRecentScan, isLoading: isItemLoading } = useScanItemStore()
   const { selectedStore, isLoading: isStoreLoading } = useStore()
+  const { lists, fetchLists, currentList, setCurrentList } = useListStore()
+  const { recentScan, addItem, clearRecentScan, isLoading: isAdding } = useScanItemStore()
 
-  // Load available lists on mount
+  const [scanError, setScanError] = useState<string | null>(null)
+  const [viewMode, setViewMode] = useState<'view' | 'add'>('view')
+
+  // load your lists & pick one
   useEffect(() => {
-    if (!lists.length) fetchLists()
+    if (lists.length === 0) fetchLists()
   }, [lists, fetchLists])
 
-  // Pick a default list
   useEffect(() => {
-    if (lists.length > 0 && !currentList) {
+    if (lists.length && !currentList) {
       setCurrentList(lists[0])
     }
   }, [lists, currentList, setCurrentList])
 
-  // Handle a successful barcode scan
+  // called by the scanner
   const handleScan = async (barcode: string) => {
-    if (isProcessing) return
     setScanError(null)
-    setScanSuccess(null)
-    setLastScannedPart(null)
-    setIsProcessing(true)
-
     try {
-      const { data: partData, error: partError } = await supabase
-        .from('parts')
-        .select('*')
-        .eq('part_number', barcode)
-        .eq('store_location', selectedStore)
-        .single()
-
-      if (partError || !partData) {
-        throw new Error(`Part "${barcode}" not found in store ${selectedStore}`)
+      // if we're in "view" mode just flash it
+      if (viewMode === 'view') {
+        // no DB call here, ScanResult will just show recentScan
+        return
       }
-
-      setLastScannedPart(partData)
-      setScanSuccess(`${barcode} → Bin: ${partData.bin_location}`)
-      setTimeout(() => setScanSuccess(null), 5000)
-    } catch (err: any) {
-      console.error('Scan error:', err)
-      setScanError(err.message || 'Failed to process scan')
-      setTimeout(() => setScanError(null), 3000)
-    } finally {
-      setIsProcessing(false)
-    }
-  }
-
-  // Handle scanner errors
-  const handleScanError = (error: string) => {
-    setScanError(error)
-    setTimeout(() => setScanError(null), 3000)
-  }
-
-  // Save modified scan item to list
-  const handleSaveItem = async (updates: Partial<any>) => {
-    if (!lastScannedPart || !currentList) return
-    setIsProcessing(true)
-    try {
-      await addItem({
-        barcode: lastScannedPart.part_number,
-        part_number: lastScannedPart.part_number,
-        bin_location: lastScannedPart.bin_location,
+      // otherwise add to the list
+      if (!currentList) throw new Error('No list selected')
+      const newItem = await addItem({
+        barcode,
+        part_number: barcode,
+        bin_location: '',
         list_id: currentList.id,
-        quantity: updates.quantity || 1,
-        notes: updates.notes || ''
+        quantity: 1,
+        notes: '',
       })
-      setScanSuccess(`Added ${lastScannedPart.part_number} to list`)
-      setTimeout(() => setScanSuccess(null), 3000)
+      if (!newItem) {
+        throw new Error('Failed to add item')
+      }
     } catch (err: any) {
-      console.error('Save error:', err)
-      setScanError(err.message || 'Failed to save item')
-      setTimeout(() => setScanError(null), 3000)
-    } finally {
-      setIsProcessing(false)
+      setScanError(err.message)
     }
   }
 
   if (isStoreLoading) {
-    return <p className="p-4 text-center">Loading your store settings...</p>
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <p>Loading store…</p>
+      </div>
+    )
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col pb-16">
+    <div className="min-h-screen flex flex-col pb-16 bg-gray-50">
       <Header title="Scan Barcode" showBackButton />
+
       <main className="flex-1 p-4 space-y-4">
-        {/* Error / Success banners */}
-        {scanError && <div className="p-2 bg-red-100 text-red-800 rounded">{scanError}</div>}
-        {scanSuccess && <div className="p-2 bg-green-100 text-green-800 rounded">{scanSuccess}</div>}
+        <div className="flex items-center space-x-4">
+          <button
+            onClick={() => setViewMode('view')}
+            className={viewMode === 'view' ? 'font-bold' : ''}
+          >
+            View
+          </button>
+          <button
+            onClick={() => setViewMode('add')}
+            className={viewMode === 'add' ? 'font-bold' : ''}
+          >
+            Add to List
+          </button>
+        </div>
 
-        {/* Camera Scanner */}
-        <BarcodeScanner onScanSuccess={handleScan} onScanError={handleScanError} />
+        <BarcodeScanner
+          onScanSuccess={handleScan}
+          onScanError={(e) => setScanError(e)}
+        />
 
-        {/* Scan Result Details */}
+        {scanError && (
+          <div className="p-2 bg-red-100 text-red-700 rounded">{scanError}</div>
+        )}
+
         <ScanResult
-          item={lastScannedPart}
-          isLoading={isProcessing || isItemLoading}
+          item={recentScan}
+          isLoading={isAdding}
           error={scanError}
-          onSave={handleSaveItem}
           clearResult={clearRecentScan}
+          onSave={(updates) => {
+            if (recentScan) addItem({ ...recentScan, ...updates })
+          }}
         />
       </main>
+
       <BottomNav />
     </div>
   )
 }
-// export default ScanPage

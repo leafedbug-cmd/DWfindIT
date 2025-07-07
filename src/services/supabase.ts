@@ -14,14 +14,10 @@ export const supabase = createClient<Database>(
   SUPABASE_KEY,
   {
     auth: {
-      autoRefreshToken: true,   // keep tokens fresh
-      persistSession: true,     // store session in localStorage
-      detectSessionInUrl: true, // handle OAuth redirects
+      autoRefreshToken:   true,
+      persistSession:     true,
+      detectSessionInUrl: true,
     },
-    // IMPORTANT: remove the global Accept header override
-    // so PostgREST can negotiate media types:
-    // global: {
-    //   headers: { Accept: '*/*' }
-    // }
+    // <-- remove global.headers entirely
   }
 )
