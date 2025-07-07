@@ -1,83 +1,93 @@
-import { create } from 'zustand';
-import { supabase } from '../services/supabase';
-import { User } from '@supabase/supabase-js';
+// src/store/authStore.ts
+import { create } from 'zustand'
+import { supabase } from '../services/supabase'
+import type { User, Session } from '@supabase/supabase-js'
 
 interface AuthState {
-  user: User | null;
-  session: any | null;
-  isLoading: boolean;
-  error: string | null;
-  signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string) => Promise<void>;
-  signOut: () => Promise<void>;
-  refreshUser: () => Promise<void>;
+  user: User | null
+  session: Session | null
+  isLoading: boolean
+  error: string | null
+  signIn: (email: string, password: string) => Promise<void>
+  signUp: (email: string, password: string) => Promise<void>
+  signOut: () => Promise<void>
+  refreshSession: () => Promise<void>
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
-  user: null,
-  session: null,
-  isLoading: true,
-  error: null,
+export const useAuthStore = create<AuthState>((set) => {
+  // initialize auth state
+  set({ isLoading: true, error: null })
 
-  signIn: async (email: string, password: string) => {
-    try {
-      set({ isLoading: true, error: null });
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+  // fetch current session on startup
+  supabase.auth.getSession().then(({ data, error }) => {
+    console.log('⚡️ auth init →', { data, error })
+    set({
+      user: data.session?.user || null,
+      session: data.session || null,
+      isLoading: false,
+      error: error?.message || null,
+    })
+  })
 
-      if (error) throw error;
-      set({ user: data.user, session: data.session, error: null });
-    } catch (error: any) {
-      set({ error: error.message });
-    } finally {
-      set({ isLoading: false });
-    }
-  },
+  // subscribe to auth state changes
+  supabase.auth.onAuthStateChange((event, session) => {
+    console.log('🔄 auth state change →', { event, session })
+    set({
+      user: session?.user || null,
+      session: session || null,
+      isLoading: false,
+    })
+  })
 
-  signUp: async (email: string, password: string) => {
-    try {
-      set({ isLoading: true, error: null });
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-      });
+  return {
+    user: null,
+    session: null,
+    isLoading: true,
+    error: null,
 
-      if (error) throw error;
-      set({ user: data.user, session: data.session, error: null });
-    } catch (error: any) {
-      set({ error: error.message });
-    } finally {
-      set({ isLoading: false });
-    }
-  },
+    signIn: async (email, password) => {
+      set({ isLoading: true, error: null })
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+      console.log('⚡️ signIn →', { data, error })
+      if (error) {
+        set({ error: error.message })
+      } else {
+        set({ user: data.user, session: data.session })
+      }
+      set({ isLoading: false })
+    },
 
-  signOut: async () => {
-    try {
-      set({ isLoading: true, error: null });
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
-      set({ user: null, session: null });
-    } catch (error: any) {
-      set({ error: error.message });
-    } finally {
-      set({ isLoading: false });
-    }
-  },
+    signUp: async (email, password) => {
+      set({ isLoading: true, error: null })
+      const { data, error } = await supabase.auth.signUp({ email, password })
+      console.log('⚡️ signUp →', { data, error })
+      if (error) {
+        set({ error: error.message })
+      } else {
+        set({ user: data.user, session: data.session })
+      }
+      set({ isLoading: false })
+    },
 
-  refreshUser: async () => {
-    try {
-      set({ isLoading: true, error: null });
-      const { data, error } = await supabase.auth.getSession();
-      if (error) throw error;
-      set({ 
-        user: data.session?.user || null,
-        session: data.session,
-        isLoading: false,
-      });
-    } catch (error: any) {
-      set({ error: error.message, isLoading: false });
-    }
-  },
-}));
+    signOut: async () => {
+      set({ isLoading: true, error: null })
+      const { error } = await supabase.auth.signOut()
+      console.log('⚡️ signOut →', { error })
+      if (error) set({ error: error.message })
+      else set({ user: null, session: null })
+      set({ isLoading: false })
+    },
+
+    refreshSession: async () => {
+      set({ isLoading: true, error: null })
+      const { data, error } = await supabase.auth.getSession()
+      console.log('⚡️ refreshSession →', { data, error })
+      if (error) {
+        set({ error: error.message })
+      } else {
+        set({ user: data.session?.user || null, session: data.session || null })
+      }
+      set({ isLoading: false })
+    },
+  }
+})
