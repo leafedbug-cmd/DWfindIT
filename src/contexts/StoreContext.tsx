@@ -25,29 +25,35 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const availableStores = ['01', '02', '03', '04', '05', '06', '07', '08'];
 
   useEffect(() => {
-    const loadUserStore = async () => {
-      if (!user) {
-        setIsLoading(false);
-        return;
-      }
+  const loadUserStore = async () => {
+    if (!user) {
+      setIsLoading(false);
+      return;
+    }
 
-      try {
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('store_location')
-          .eq('id', user.id)
-          .single();
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('store_location')
+        .eq('id', user.id)
+        .single();
 
-        if (data && data.store_location) {
-          setSelectedStore(data.store_location);
-          console.log('User store loaded:', data.store_location);
-        }
-      } catch (error) {
+      if (error) {
         console.error('Error loading user store:', error);
-      } finally {
-        setIsLoading(false);
+        // Set a default store if profile fetch fails
+        setSelectedStore('03'); // Default to store 03
+      } else if (data && data.store_location) {
+        setSelectedStore(data.store_location);
+        console.log('User store loaded:', data.store_location);
       }
-    };
+    } catch (error) {
+      console.error('Error loading user store:', error);
+      // Set a default store if anything fails
+      setSelectedStore('03');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
     loadUserStore();
   }, [user]);
