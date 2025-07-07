@@ -6,7 +6,7 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL!
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY!
 
 if (!SUPABASE_URL || !SUPABASE_KEY) {
-  throw new Error('Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY in .env')
+  throw new Error('Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY')
 }
 
 export const supabase = createClient<Database>(
@@ -18,6 +18,11 @@ export const supabase = createClient<Database>(
       persistSession:     true,
       detectSessionInUrl: true,
     },
-    // <-- remove global.headers entirely
+    global: {
+      headers: {
+        // allow both normal JSON (arrays) and PostgREST’s object media‐type
+        Accept: 'application/json, application/vnd.pgrst.object+json',
+      },
+    },
   }
 )
