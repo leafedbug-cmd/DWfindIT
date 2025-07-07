@@ -15,29 +15,32 @@ interface AuthState {
 }
 
 export const useAuthStore = create<AuthState>((set) => {
-  // initialize auth state
-  set({ isLoading: true, error: null })
+  // initialize default state
+  set({ user: null, session: null, isLoading: true, error: null })
 
-  // fetch current session on startup
-  supabase.auth.getSession().then(({ data, error }) => {
-    console.log('⚡️ auth init →', { data, error })
+  // load existing session on startup
+  const initAuth = async () => {
+    const { data: { session }, error } = await supabase.auth.getSession()
+    console.log('⚡️ auth init →', { session, error })
     set({
-      user: data.session?.user || null,
-      session: data.session || null,
+      user: session?.user || null,
+      session,
       isLoading: false,
       error: error?.message || null,
     })
-  })
+  }
+  initAuth()
 
   // subscribe to auth state changes
-  supabase.auth.onAuthStateChange((event, session) => {
-    console.log('🔄 auth state change →', { event, session })
-    set({
-      user: session?.user || null,
-      session: session || null,
-      isLoading: false,
-    })
-  })
+  const { data: { subscription } } = supabase.auth.onAuthStateChange(
+    (event, session) => {
+      console.log('🔄 auth change →', { event, session })
+      set({
+        user: session?.user || null,
+        session,
+      })
+    }
+  )
 
   return {
     user: null,
@@ -73,19 +76,22 @@ export const useAuthStore = create<AuthState>((set) => {
       set({ isLoading: true, error: null })
       const { error } = await supabase.auth.signOut()
       console.log('⚡️ signOut →', { error })
-      if (error) set({ error: error.message })
-      else set({ user: null, session: null })
+      if (error) {
+        set({ error: error.message })
+      } else {
+        set({ user: null, session: null })
+      }
       set({ isLoading: false })
     },
 
     refreshSession: async () => {
       set({ isLoading: true, error: null })
-      const { data, error } = await supabase.auth.getSession()
-      console.log('⚡️ refreshSession →', { data, error })
+      const { data: { session }, error } = await supabase.auth.getSession()
+      console.log('⚡️ refreshSession →', { session, error })
       if (error) {
         set({ error: error.message })
       } else {
-        set({ user: data.session?.user || null, session: data.session || null })
+        set({ user: session?.user || null, session })
       }
       set({ isLoading: false })
     },
