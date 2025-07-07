@@ -1,67 +1,114 @@
 // src/pages/ScanPage.tsx
-import React, { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { BarcodeScanner } from '../components/BarcodeScanner'
-import { ScanResult } from '../components/ScanResult'
-import { Header } from '../components/Header'
-import { BottomNav } from '../components/BottomNav'
-import { useStore } from '../contexts/StoreContext'
-import { useListStore } from '../store/listStore'
-import { useScanItemStore } from '../store/scanItemStore'
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { BarcodeScanner } from '../components/BarcodeScanner';
+import { ScanResult } from '../components/ScanResult';
+import { Header } from '../components/Header';
+import { BottomNav } from '../components/BottomNav';
+import { useListStore } from '../store/listStore';
+import { useScanItemStore } from '../store/scanItemStore';
+import { useStore } from '../contexts/StoreContext';
+import { supabase } from '../services/supabase';
 
 export const ScanPage: React.FC = () => {
-  const navigate = useNavigate()
-  const { selectedStore, isLoading: isStoreLoading } = useStore()
-  const { lists, fetchLists, currentList, setCurrentList } = useListStore()
-  const { recentScan, addItem, clearRecentScan, isLoading: isAdding } = useScanItemStore()
+  const navigate = useNavigate();
+  const { selectedStore, isLoading: isStoreLoading } = useStore();
+  const { lists, fetchLists, currentList, setCurrentList } = useListStore();
+  const { addItem, clearRecentScan } = useScanItemStore();
 
-  const [scanError, setScanError] = useState<string | null>(null)
-  const [viewMode, setViewMode] = useState<'view' | 'add'>('view')
+  const [scanError, setScanError] = useState<string | null>(null);
+  const [scanSuccess, setScanSuccess] = useState<string | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [viewMode, setViewMode] = useState<'view' | 'add'>('view');
+  const [lastScannedPart, setLastScannedPart] = useState<any>(null);
 
-  // load your lists & pick one
+  // Load lists on mount
   useEffect(() => {
-    if (lists.length === 0) fetchLists()
-  }, [lists, fetchLists])
+    if (lists.length === 0) fetchLists();
+  }, [lists, fetchLists]);
 
+  // Set default list
   useEffect(() => {
-    if (lists.length && !currentList) {
-      setCurrentList(lists[0])
+    if (lists.length > 0 && !currentList) {
+      setCurrentList(lists[0]);
     }
-  }, [lists, currentList, setCurrentList])
+  }, [lists, currentList, setCurrentList]);
 
-  // called by the scanner
   const handleScan = async (barcode: string) => {
-    setScanError(null)
+    if (isProcessing) return;
+    setScanError(null);
+    setScanSuccess(null);
+    setLastScannedPart(null);
+
     try {
-      // if we're in "view" mode just flash it
+      setIsProcessing(true);
+
+      // Fetch part from Supabase, using maybeSingle to avoid 406s
+      const { data: partData, error: partError } = await supabase
+        .from('parts')
+        .select('*')
+        .eq('part_number', barcode)
+        .eq('store_location', selectedStore)
+        .maybeSingle();
+
+      if (partError || !partData) {
+        throw new Error(`Part "${barcode}" not found in store ${selectedStore}.`);
+      }
+      setLastScannedPart(partData);
+
+      // VIEW mode: just show the result
       if (viewMode === 'view') {
-        // no DB call here, ScanResult will just show recentScan
-        return
+        setScanSuccess(`${barcode} → Bin: ${partData.bin_location}`);
+        return;
       }
-      // otherwise add to the list
-      if (!currentList) throw new Error('No list selected')
-      const newItem = await addItem({
-        barcode,
-        part_number: barcode,
-        bin_location: '',
-        list_id: currentList.id,
-        quantity: 1,
-        notes: '',
-      })
-      if (!newItem) {
-        throw new Error('Failed to add item')
+
+      // ADD mode: insert or update in scan_items
+      if (!currentList) {
+        throw new Error('No list selected.');
       }
-    } catch (err: any) {
-      setScanError(err.message)
+
+      const { data: existingItem } = await supabase
+        .from('scan_items')
+        .select('*')
+        .eq('barcode', barcode)
+        .eq('list_id', currentList.id)
+        .maybeSingle();
+
+      if (existingItem) {
+        const newQty = existingItem.quantity + 1;
+        const { error: updateError } = await supabase
+          .from('scan_items')
+          .update({ quantity: newQty })
+          .eq('id', existingItem.id);
+        if (updateError) throw updateError;
+        setScanSuccess(`Updated ${barcode} quantity to ${newQty}`);
+      } else {
+        await addItem({
+          barcode,
+          part_number: partData.part_number,
+          bin_location: partData.bin_location,
+          list_id: currentList.id,
+          quantity: 1,
+          notes: '',
+        });
+        setScanSuccess(`Added ${barcode} to list`);
+      }
+    } catch (error: any) {
+      setScanError(error.message);
+    } finally {
+      setIsProcessing(false);
+      // clear notifications after a few seconds
+      setTimeout(() => setScanError(null), 3000);
+      setTimeout(() => setScanSuccess(null), 3000);
     }
-  }
+  };
 
   if (isStoreLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <p>Loading store…</p>
+        <p>Loading store settings...</p>
       </div>
-    )
+    );
   }
 
   return (
@@ -69,42 +116,44 @@ export const ScanPage: React.FC = () => {
       <Header title="Scan Barcode" showBackButton />
 
       <main className="flex-1 p-4 space-y-4">
-        <div className="flex items-center space-x-4">
+        {/* Mode Toggle */}
+        <div className="flex space-x-4">
           <button
+            className={viewMode === 'view' ? 'font-bold text-orange-600' : 'text-gray-600'}
             onClick={() => setViewMode('view')}
-            className={viewMode === 'view' ? 'font-bold' : ''}
           >
             View
           </button>
           <button
+            className={viewMode === 'add' ? 'font-bold text-orange-600' : 'text-gray-600'}
             onClick={() => setViewMode('add')}
-            className={viewMode === 'add' ? 'font-bold' : ''}
           >
             Add to List
           </button>
         </div>
 
-        <BarcodeScanner
-          onScanSuccess={handleScan}
-          onScanError={(e) => setScanError(e)}
-        />
+        {/* Camera Scanner */}
+        <BarcodeScanner onScanSuccess={handleScan} onScanError={(e) => setScanError(e)} />
 
-        {scanError && (
-          <div className="p-2 bg-red-100 text-red-700 rounded">{scanError}</div>
-        )}
+        {/* Feedback */}
+        {scanError && <div className="p-2 bg-red-100 text-red-800 rounded">{scanError}</div>}
+        {scanSuccess && <div className="p-2 bg-green-100 text-green-800 rounded">{scanSuccess}</div>}
 
+        {/* Scan Result */}
         <ScanResult
-          item={recentScan}
-          isLoading={isAdding}
+          item={lastScannedPart}
+          isLoading={isProcessing}
           error={scanError}
           clearResult={clearRecentScan}
           onSave={(updates) => {
-            if (recentScan) addItem({ ...recentScan, ...updates })
+            if (lastScannedPart) {
+              addItem({ ...lastScannedPart, ...updates });
+            }
           }}
         />
       </main>
 
       <BottomNav />
     </div>
-  )
-}
+  );
+};
