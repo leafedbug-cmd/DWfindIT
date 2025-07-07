@@ -6,7 +6,7 @@ import { Header } from '../components/Header';
 import { BottomNav } from '../components/BottomNav';
 import { useListStore } from '../store/listStore';
 import { useScanItemStore } from '../store/scanItemStore';
-import { useStore } from '../store/StoreContext';
+import { useStore } from '../contexts/StoreContext';
 import { supabase } from '../services/supabase';
 import { Search, Package, Eye, ListPlus } from 'lucide-react';
 
