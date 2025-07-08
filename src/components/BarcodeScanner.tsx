@@ -24,6 +24,24 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, o
   const cooldownInterval = useRef<NodeJS.Timeout>()
   const mountedRef = useRef<boolean>(true)
 
+  // DEBUG: Add this useEffect to test if the element exists
+  useEffect(() => {
+    const checkElement = () => {
+      const readerEl = document.getElementById('reader')
+      console.log('DEBUG: reader element exists?', !!readerEl, readerEl)
+      console.log('DEBUG: All elements with id containing "reader":', 
+        Array.from(document.querySelectorAll('[id*="reader"]')))
+    }
+    
+    // Check immediately
+    checkElement()
+    
+    // Check after small delays
+    setTimeout(checkElement, 100)
+    setTimeout(checkElement, 500)
+    setTimeout(checkElement, 1000)
+  }, [])
+
   const startScanner = useCallback(async () => {
     if (!html5QrCodeRef.current || !selectedCameraId || isScanning || !mountedRef.current) return
     
@@ -245,6 +263,11 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, o
 
   return (
     <div className="w-full">
+      {/* DEBUG: Add this debug div to verify JSX is rendering */}
+      <div style={{background: 'yellow', padding: '10px', marginBottom: '10px', color: 'black'}}>
+        DEBUG: BarcodeScanner component is rendering. isInitialized: {isInitialized.toString()}
+      </div>
+
       {cameras.length > 1 && (
         <div className="mb-4 p-3 bg-gray-50 rounded-lg">
           <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -271,8 +294,13 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, o
           minHeight: '300px',
           border: '2px solid #e5e7eb',
           transition: 'border 0.3s ease',
+          background: 'lightblue' // DEBUG: Add background to verify div renders
         }}
-      />
+      >
+        <div style={{padding: '20px', textAlign: 'center', color: 'black'}}>
+          DEBUG: This is the #reader div. Element ID should be "reader"
+        </div>
+      </div>
 
       {cooldownRemaining > 0 && (
         <div className="text-center mt-3 p-2 bg-orange-100 text-orange-800 rounded">
