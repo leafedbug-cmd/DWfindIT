@@ -47,6 +47,12 @@ export const ScanPage: React.FC = () => {
     try {
       setIsProcessing(true);
 
+      // DEBUG: Check current user and list ownership
+      const { data: { user } } = await supabase.auth.getUser();
+      console.log('🔐 Current user:', user?.id);
+      console.log('📋 Current list:', currentList);
+      console.log('🏪 Selected store:', selectedStore);
+
       // Fetch part from Supabase, using maybeSingle to avoid 406s
       const { data: partData, error: partError } = await supabase
         .from('parts')
@@ -71,6 +77,23 @@ export const ScanPage: React.FC = () => {
         throw new Error('No list selected.');
       }
 
+      // DEBUG: Verify list belongs to current user
+      const { data: listCheck, error: listError } = await supabase
+        .from('lists')
+        .select('id, name, user_id')
+        .eq('id', currentList.id)
+        .single();
+
+      console.log('📝 List ownership check:', { listCheck, listError, userMatches: listCheck?.user_id === user?.id });
+
+      if (listError || !listCheck) {
+        throw new Error('List not found or access denied');
+      }
+
+      if (listCheck.user_id !== user?.id) {
+        throw new Error('You do not have permission to add items to this list');
+      }
+
       const { data: existingItem } = await supabase
         .from('scan_items')
         .select('*')
@@ -87,14 +110,21 @@ export const ScanPage: React.FC = () => {
         if (updateError) throw updateError;
         setScanSuccess(`Updated ${barcode} quantity to ${newQty}`);
       } else {
-        await addItem({
-          barcode,
+        // FIXED: Include ALL fields that exist in your scan_items table
+        const scanItemData = {
+          barcode: barcode,
           part_number: partData.part_number,
           bin_location: partData.bin_location,
+          store_location: partData.store_location, // Include this since it exists in your table
           list_id: currentList.id,
           quantity: 1,
-          notes: '',
-        });
+          notes: ''
+          // Let database auto-handle: id, created_at, updated_at
+        };
+
+        console.log('💾 Saving scan item with exact data:', scanItemData);
+        
+        await addItem(scanItemData);
         setScanSuccess(`Added ${barcode} to list`);
       }
     } catch (error: any) {
