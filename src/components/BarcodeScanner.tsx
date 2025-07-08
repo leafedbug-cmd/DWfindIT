@@ -14,7 +14,7 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, o
   const [selectedCameraId, setSelectedCameraId] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
   const [isInitialized, setIsInitialized] = useState(false)
-  const [initializationStatus, setInitializationStatus] = useState<string>('Waiting for camera...')
+  const [initializationStatus, setInitializationStatus] = useState<string>('Initializing...')
 
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null)
   const lastScanned = useRef<string>('')
@@ -23,24 +23,6 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, o
   const [cooldownRemaining, setCooldownRemaining] = useState<number>(0)
   const cooldownInterval = useRef<NodeJS.Timeout>()
   const mountedRef = useRef<boolean>(true)
-
-  // DEBUG: Add this useEffect to test if the element exists
-  useEffect(() => {
-    const checkElement = () => {
-      const readerEl = document.getElementById('reader')
-      console.log('DEBUG: reader element exists?', !!readerEl, readerEl)
-      console.log('DEBUG: All elements with id containing "reader":', 
-        Array.from(document.querySelectorAll('[id*="reader"]')))
-    }
-    
-    // Check immediately
-    checkElement()
-    
-    // Check after small delays
-    setTimeout(checkElement, 100)
-    setTimeout(checkElement, 500)
-    setTimeout(checkElement, 1000)
-  }, [])
 
   const startScanner = useCallback(async () => {
     if (!html5QrCodeRef.current || !selectedCameraId || isScanning || !mountedRef.current) return
@@ -107,49 +89,27 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, o
     }, 1000)
   }
 
-  // Initialize camera once DOM is ready
+  // Initialize camera AFTER component renders
   useEffect(() => {
     mountedRef.current = true
-    let retryCount = 0
-    const maxRetries = 5
-
-    const waitForElement = (id: string): Promise<HTMLElement> => {
-      return new Promise((resolve, reject) => {
-        const checkElement = () => {
-          const element = document.getElementById(id)
-          if (element) {
-            resolve(element)
-            return
-          }
-
-          if (retryCount >= maxRetries) {
-            reject(new Error(`Element #${id} not found after ${maxRetries} retries`))
-            return
-          }
-
-          retryCount++
-          console.log(`Waiting for #${id} element... (${retryCount}/${maxRetries})`)
-          setTimeout(checkElement, 200)
-        }
-
-        checkElement()
-      })
-    }
 
     const initializeCamera = async () => {
       if (!mountedRef.current) return
 
       try {
-        setInitializationStatus('Looking for scanner container...')
-        console.log('Waiting for reader element...')
+        setInitializationStatus('Checking for camera access...')
+        console.log('Initializing Html5Qrcode scanner...')
         
-        // Wait for DOM element to be available
-        await waitForElement('reader')
+        // Wait a moment for DOM to be ready
+        await new Promise(resolve => setTimeout(resolve, 100))
         
-        if (!mountedRef.current) return
-
-        setInitializationStatus('Initializing camera scanner...')
-        console.log('Reader element found, initializing Html5Qrcode scanner...')
+        // Verify the reader element exists
+        const readerElement = document.getElementById('reader')
+        if (!readerElement) {
+          throw new Error('Scanner container not found in DOM')
+        }
+        
+        console.log('Reader element found:', readerElement)
         
         // Clean up any existing scanner first
         if (html5QrCodeRef.current) {
@@ -160,7 +120,7 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, o
         
         html5QrCodeRef.current = new Html5Qrcode('reader')
 
-        setInitializationStatus('Requesting camera access...')
+        setInitializationStatus('Requesting camera permissions...')
         console.log('Getting available cameras...')
         const devices = await Html5Qrcode.getCameras()
         
@@ -193,8 +153,8 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, o
       }
     }
 
-    // Start initialization after a small delay
-    const initTimeout = setTimeout(initializeCamera, 100)
+    // Start initialization after component mounts
+    const initTimeout = setTimeout(initializeCamera, 200)
 
     return () => {
       mountedRef.current = false
@@ -250,25 +210,21 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, o
     )
   }
 
-  if (!isInitialized) {
-    return (
-      <div className="p-4 bg-blue-100 text-blue-700 rounded">
-        <div className="flex items-center">
-          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600 mr-2"></div>
-          <span>{initializationStatus}</span>
-        </div>
-      </div>
-    )
-  }
-
+  // ALWAYS render the scanner container, regardless of initialization state
   return (
     <div className="w-full">
-      {/* DEBUG: Add this debug div to verify JSX is rendering */}
-      <div style={{background: 'yellow', padding: '10px', marginBottom: '10px', color: 'black'}}>
-        DEBUG: BarcodeScanner component is rendering. isInitialized: {isInitialized.toString()}
-      </div>
+      {/* Initialization status */}
+      {!isInitialized && (
+        <div className="p-4 bg-blue-100 text-blue-700 rounded mb-4">
+          <div className="flex items-center">
+            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600 mr-2"></div>
+            <span>{initializationStatus}</span>
+          </div>
+        </div>
+      )}
 
-      {cameras.length > 1 && (
+      {/* Camera selection */}
+      {cameras.length > 1 && isInitialized && (
         <div className="mb-4 p-3 bg-gray-50 rounded-lg">
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Select Camera:
@@ -287,21 +243,28 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, o
         </div>
       )}
 
+      {/* Scanner container - ALWAYS rendered */}
       <div
         id="reader"
-        className="w-full bg-black rounded-lg overflow-hidden"
+        className="w-full rounded-lg overflow-hidden"
         style={{
           minHeight: '300px',
           border: '2px solid #e5e7eb',
           transition: 'border 0.3s ease',
-          background: 'lightblue' // DEBUG: Add background to verify div renders
+          backgroundColor: isInitialized ? 'black' : '#f3f4f6'
         }}
       >
-        <div style={{padding: '20px', textAlign: 'center', color: 'black'}}>
-          DEBUG: This is the #reader div. Element ID should be "reader"
-        </div>
+        {!isInitialized && (
+          <div className="flex items-center justify-center h-full p-8 text-gray-500">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-400 mx-auto mb-2"></div>
+              <p>Preparing camera...</p>
+            </div>
+          </div>
+        )}
       </div>
 
+      {/* Status messages */}
       {cooldownRemaining > 0 && (
         <div className="text-center mt-3 p-2 bg-orange-100 text-orange-800 rounded">
           <span className="text-sm font-medium">
