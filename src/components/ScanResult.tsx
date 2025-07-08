@@ -1,5 +1,5 @@
 // src/components/ScanResult.tsx
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useCallback, memo } from 'react'
 import { CheckCircle, AlertCircle, Package, MapPin, Plus, Minus, Scan } from 'lucide-react'
 import type { ScanItem } from '../services/supabase'
 
@@ -11,7 +11,7 @@ interface ScanResultProps {
   clearResult?: () => void
 }
 
-export const ScanResult: React.FC<ScanResultProps> = ({
+export const ScanResult: React.FC<ScanResultProps> = memo(({
   item,
   isLoading = false,
   error = null,
@@ -21,8 +21,10 @@ export const ScanResult: React.FC<ScanResultProps> = ({
   const [quantity, setQuantity] = useState<number>(1)
   const [notes, setNotes] = useState<string>('')
 
-  // Debug log to trace props
-  console.log('🔎 ScanResult render →', { item, isLoading, error })
+  // Debug log to trace props (only log when values actually change)
+  useEffect(() => {
+    console.log('🔎 ScanResult render →', { item: !!item, isLoading, error: !!error })
+  }, [item, isLoading, error])
 
   useEffect(() => {
     if (item) {
@@ -30,6 +32,24 @@ export const ScanResult: React.FC<ScanResultProps> = ({
       setNotes(item.notes || '')
     }
   }, [item])
+
+  const handleSave = useCallback(() => {
+    console.log('💾 ScanResult save →', { quantity, notes })
+    onSave({ quantity, notes })
+  }, [quantity, notes, onSave])
+
+  const handleCancel = useCallback(() => {
+    console.log('❌ ScanResult clear')
+    clearResult()
+  }, [clearResult])
+
+  const incrementQuantity = useCallback(() => {
+    setQuantity(prev => prev + 1)
+  }, [])
+
+  const decrementQuantity = useCallback(() => {
+    setQuantity(prev => Math.max(1, prev - 1))
+  }, [])
 
   if (isLoading) {
     return (
@@ -58,16 +78,6 @@ export const ScanResult: React.FC<ScanResultProps> = ({
         <p className="text-gray-500">Scan a barcode to see details</p>
       </div>
     )
-  }
-
-  const handleSave = () => {
-    console.log('💾 ScanResult save →', { quantity, notes })
-    onSave({ quantity, notes })
-  }
-
-  const handleCancel = () => {
-    console.log('❌ ScanResult clear')
-    clearResult()
   }
 
   return (
@@ -107,21 +117,20 @@ export const ScanResult: React.FC<ScanResultProps> = ({
           </label>
           <div className="flex items-center">
             <button 
-              onClick={() => setQuantity(prev => Math.max(1, prev - 1))}
+              onClick={decrementQuantity}
               className="bg-gray-100 hover:bg-gray-200 text-gray-700 p-2 rounded-l-md border border-gray-300"
             >
               <Minus className="h-4 w-4" />
             </button>
             <input
-              id="quantity"
               type="number"
               value={quantity}
-              onChange={e => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
-              className="p-2 w-16 text-center border-t border-b border-gray-300"
+              onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+              className="flex-1 text-center py-2 border-t border-b border-gray-300 focus:ring-orange-500 focus:border-orange-500"
               min="1"
             />
             <button 
-              onClick={() => setQuantity(prev => prev + 1)}
+              onClick={incrementQuantity}
               className="bg-gray-100 hover:bg-gray-200 text-gray-700 p-2 rounded-r-md border border-gray-300"
             >
               <Plus className="h-4 w-4" />
@@ -131,33 +140,35 @@ export const ScanResult: React.FC<ScanResultProps> = ({
         
         <div className="mb-4">
           <label htmlFor="notes" className="block text-xs text-gray-500 mb-1">
-            Notes (Optional)
+            Notes
           </label>
           <textarea
-            id="notes"
             value={notes}
-            onChange={e => setNotes(e.target.value)}
-            placeholder="Add notes about this item..."
-            className="w-full p-2 border border-gray-300 rounded-md text-sm focus:ring-orange-500 focus:border-orange-500"
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="Add any notes..."
+            className="w-full p-2 border border-gray-300 rounded-md focus:ring-orange-500 focus:border-orange-500"
             rows={2}
           />
         </div>
         
-        <div className="flex justify-between mt-4">
-          <button 
-            onClick={handleCancel}
-            className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
-          >
-            Cancel
-          </button>
-          <button 
+        <div className="flex space-x-2">
+          <button
             onClick={handleSave}
-            className="px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700"
+            className="flex-1 bg-orange-600 text-white py-2 px-4 rounded-md hover:bg-orange-700 transition-colors"
           >
             Save to List
+          </button>
+          <button
+            onClick={handleCancel}
+            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors"
+          >
+            Clear
           </button>
         </div>
       </div>
     </div>
   )
-}
+})
+
+// Add display name for debugging
+ScanResult.displayName = 'ScanResult'
