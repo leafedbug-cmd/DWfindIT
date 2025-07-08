@@ -1,5 +1,5 @@
 // src/pages/ScanPage.tsx
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BarcodeScanner } from '../components/BarcodeScanner';
 import { ScanResult } from '../components/ScanResult';
@@ -21,6 +21,7 @@ export const ScanPage: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [viewMode, setViewMode] = useState<'view' | 'add'>('view');
   const [lastScannedPart, setLastScannedPart] = useState<any>(null);
+  const [cameraError, setCameraError] = useState<string | null>(null); // Separate camera errors
 
   // Load lists on mount
   useEffect(() => {
@@ -34,8 +35,11 @@ export const ScanPage: React.FC = () => {
     }
   }, [lists, currentList, setCurrentList]);
 
-  const handleScan = async (barcode: string) => {
+  // Memoize the scan handler to prevent BarcodeScanner re-renders
+  const handleScan = useCallback(async (barcode: string) => {
     if (isProcessing) return;
+    
+    console.log('📷 Processing barcode scan:', barcode);
     setScanError(null);
     setScanSuccess(null);
     setLastScannedPart(null);
@@ -94,6 +98,7 @@ export const ScanPage: React.FC = () => {
         setScanSuccess(`Added ${barcode} to list`);
       }
     } catch (error: any) {
+      console.error('Scan processing error:', error);
       setScanError(error.message);
     } finally {
       setIsProcessing(false);
@@ -101,7 +106,23 @@ export const ScanPage: React.FC = () => {
       setTimeout(() => setScanError(null), 3000);
       setTimeout(() => setScanSuccess(null), 3000);
     }
-  };
+  }, [isProcessing, selectedStore, viewMode, currentList, addItem]);
+
+  // Separate camera error handler that doesn't affect scanner state
+  const handleCameraError = useCallback((error: string) => {
+    console.error('Camera error:', error);
+    setCameraError(error);
+    // Auto-clear camera errors after 5 seconds
+    setTimeout(() => setCameraError(null), 5000);
+  }, []);
+
+  // Memoize BarcodeScanner to prevent unnecessary re-renders
+  const barcodeScannerComponent = useMemo(() => (
+    <BarcodeScanner 
+      onScanSuccess={handleScan} 
+      onScanError={handleCameraError}
+    />
+  ), [handleScan, handleCameraError]);
 
   if (isStoreLoading) {
     return (
@@ -132,12 +153,27 @@ export const ScanPage: React.FC = () => {
           </button>
         </div>
 
-        {/* Camera Scanner */}
-        <BarcodeScanner onScanSuccess={handleScan} onScanError={(e) => setScanError(e)} />
+        {/* Camera Scanner - Memoized to prevent re-mounting */}
+        {barcodeScannerComponent}
 
-        {/* Feedback */}
-        {scanError && <div className="p-2 bg-red-100 text-red-800 rounded">{scanError}</div>}
-        {scanSuccess && <div className="p-2 bg-green-100 text-green-800 rounded">{scanSuccess}</div>}
+        {/* Camera Error Display */}
+        {cameraError && (
+          <div className="p-2 bg-red-100 text-red-800 rounded">
+            Camera Error: {cameraError}
+          </div>
+        )}
+
+        {/* Scan Processing Feedback */}
+        {scanError && (
+          <div className="p-2 bg-red-100 text-red-800 rounded">
+            {scanError}
+          </div>
+        )}
+        {scanSuccess && (
+          <div className="p-2 bg-green-100 text-green-800 rounded">
+            {scanSuccess}
+          </div>
+        )}
 
         {/* Scan Result */}
         <ScanResult
