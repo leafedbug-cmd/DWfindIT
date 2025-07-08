@@ -1,6 +1,6 @@
 // src/components/BarcodeScanner.tsx
 import React, { useEffect, useRef, useState, useCallback } from 'react'
-import { Html5Qrcode, Html5QrcodeScannerState } from 'html5-qrcode'
+import { Html5Qrcode } from 'html5-qrcode'
 
 interface BarcodeScannerProps {
   onScanSuccess: (barcode: string) => void
@@ -122,6 +122,7 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, o
           try {
             await html5QrCodeRef.current.stop()
           } catch {}
+          html5QrCodeRef.current = null
         }
         
         html5QrCodeRef.current = new Html5Qrcode('reader')
@@ -159,25 +160,26 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, o
       }
     }
 
-    // Start initialization after component mounts
-    const initTimeout = setTimeout(initializeCamera, 200)
+    // Only initialize if not already initialized
+    if (!isInitialized) {
+      const initTimeout = setTimeout(initializeCamera, 200)
+      return () => {
+        clearTimeout(initTimeout)
+      }
+    }
 
     return () => {
       mountedRef.current = false
-      clearTimeout(initTimeout)
       if (html5QrCodeRef.current) {
         try {
-          const state = html5QrCodeRef.current.getState()
-          if (state === Html5QrcodeScannerState.SCANNING) {
-            html5QrCodeRef.current.stop().catch(() => {})
-          }
+          html5QrCodeRef.current.stop().catch(() => {})
         } catch (err) {
           console.log('Cleanup error:', err)
         }
       }
       clearInterval(cooldownInterval.current)
     }
-  }, [onScanError])
+  }, []) // Remove onScanError dependency to prevent re-initialization
 
   // Start scanner when camera is selected and initialized
   useEffect(() => {
@@ -191,12 +193,10 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, o
     console.log('Changing camera to:', id)
     if (html5QrCodeRef.current) {
       try {
-        const isCurrentlyScanning = html5QrCodeRef.current.getState() === Html5QrCodeScannerState.SCANNING
-        if (isCurrentlyScanning) {
-          await html5QrCodeRef.current.stop()
-        }
+        // Simple check - just try to stop regardless of state
+        await html5QrCodeRef.current.stop()
       } catch (err) {
-        console.log('Error stopping scanner for camera change:', err)
+        console.log('Scanner was already stopped or not running:', err)
       }
       setIsScanning(false)
     }
