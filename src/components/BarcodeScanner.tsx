@@ -67,18 +67,47 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, o
   // Initialize camera once DOM is ready
   useEffect(() => {
     let mounted = true
+    let retryCount = 0
+    const maxRetries = 10
 
-    const initializeCamera = async () => {
-      try {
-        // Wait for DOM element to be available
-        const readerElement = document.getElementById('reader')
-        if (!readerElement) {
-          console.error('Reader element not found in DOM')
-          if (mounted) setError('Scanner container not found')
+    const waitForElement = (selector: string, timeout = 5000): Promise<Element> => {
+      return new Promise((resolve, reject) => {
+        const element = document.getElementById(selector.replace('#', ''))
+        if (element) {
+          resolve(element)
           return
         }
 
-        console.log('Initializing Html5Qrcode scanner...')
+        const observer = new MutationObserver(() => {
+          const element = document.getElementById(selector.replace('#', ''))
+          if (element) {
+            observer.disconnect()
+            resolve(element)
+          }
+        })
+
+        observer.observe(document.body, {
+          childList: true,
+          subtree: true
+        })
+
+        setTimeout(() => {
+          observer.disconnect()
+          reject(new Error(`Element ${selector} not found within ${timeout}ms`))
+        }, timeout)
+      })
+    }
+
+    const initializeCamera = async () => {
+      try {
+        console.log('Waiting for reader element...')
+        
+        // Wait for DOM element to be available with retry logic
+        await waitForElement('reader', 5000)
+        
+        if (!mounted) return
+
+        console.log('Reader element found, initializing Html5Qrcode scanner...')
         html5QrCodeRef.current = new Html5Qrcode('reader')
 
         console.log('Getting available cameras...')
@@ -98,19 +127,22 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, o
         }
       } catch (err: any) {
         console.error('Camera initialization error:', err)
-        if (mounted) {
+        if (mounted && retryCount < maxRetries) {
+          retryCount++
+          console.log(`Retrying camera initialization (${retryCount}/${maxRetries})...`)
+          setTimeout(initializeCamera, 500)
+        } else if (mounted) {
           setError(err.message)
           onScanError?.(err.message)
         }
       }
     }
 
-    // Small delay to ensure DOM is fully rendered
-    const timeoutId = setTimeout(initializeCamera, 100)
+    // Start initialization
+    initializeCamera()
 
     return () => {
       mounted = false
-      clearTimeout(timeoutId)
       if (html5QrCodeRef.current) {
         html5QrCodeRef.current.stop().catch(() => {})
       }
