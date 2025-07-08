@@ -1,6 +1,6 @@
 // src/components/BarcodeScanner.tsx
 import React, { useEffect, useRef, useState, useCallback } from 'react'
-import { Html5Qrcode } from 'html5-qrcode'
+import { Html5Qrcode, Html5QrcodeScannerState } from 'html5-qrcode'
 
 interface BarcodeScannerProps {
   onScanSuccess: (barcode: string) => void
@@ -45,12 +45,12 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, o
           if (decodedText === lastScanned.current && now - lastScanTime.current < SCAN_COOLDOWN_MS) {
             return
           }
+          
+          console.log('Barcode scanned:', decodedText)
           lastScanned.current = decodedText
           lastScanTime.current = now
-          onScanSuccess(decodedText)
-          startCooldown()
-
-          // flash border
+          
+          // Flash border to show successful scan
           const reader = document.getElementById('reader')
           if (reader) {
             reader.style.border = '4px solid #10b981'
@@ -58,6 +58,12 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, o
               if (mountedRef.current) reader.style.border = '2px solid #e5e7eb'
             }, 300)
           }
+          
+          // Call the success handler
+          onScanSuccess(decodedText)
+          
+          // Start cooldown to prevent duplicate scans
+          startCooldown()
         },
         errorMessage => {
           if (!errorMessage.includes('NotFoundException') && !errorMessage.includes('No MultiFormat Readers')) {
@@ -160,7 +166,14 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, o
       mountedRef.current = false
       clearTimeout(initTimeout)
       if (html5QrCodeRef.current) {
-        html5QrCodeRef.current.stop().catch(() => {})
+        try {
+          const state = html5QrCodeRef.current.getState()
+          if (state === Html5QrcodeScannerState.SCANNING) {
+            html5QrCodeRef.current.stop().catch(() => {})
+          }
+        } catch (err) {
+          console.log('Cleanup error:', err)
+        }
       }
       clearInterval(cooldownInterval.current)
     }
@@ -176,8 +189,15 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, o
 
   const handleCameraChange = async (id: string) => {
     console.log('Changing camera to:', id)
-    if (html5QrCodeRef.current?.isScanning) {
-      await html5QrCodeRef.current.stop()
+    if (html5QrCodeRef.current) {
+      try {
+        const isCurrentlyScanning = html5QrCodeRef.current.getState() === Html5QrCodeScannerState.SCANNING
+        if (isCurrentlyScanning) {
+          await html5QrCodeRef.current.stop()
+        }
+      } catch (err) {
+        console.log('Error stopping scanner for camera change:', err)
+      }
       setIsScanning(false)
     }
     setSelectedCameraId(id)
