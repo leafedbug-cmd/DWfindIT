@@ -1,135 +1,125 @@
 // src/pages/HomePage.tsx
-import React, { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Header } from '../components/Header'
-import { BottomNav } from '../components/BottomNav'
-import { Scan, ClipboardList, Package, X } from 'lucide-react'
-import { Html5Qrcode } from 'html5-qrcode'
-import { supabase } from '../services/supabase'
-import { useStore } from '../contexts/StoreContext'
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Header } from '../components/Header';
+import { BottomNav } from '../components/BottomNav';
+import { Scan, ClipboardList, Package, X } from 'lucide-react';
+import { Html5Qrcode } from 'html5-qrcode';
+import { supabase } from '../services/supabase';
+import { useStore } from '../contexts/StoreContext';
 
 export const HomePage: React.FC = () => {
-  const navigate = useNavigate()
-  const { selectedStore } = useStore()
-  const [isQuickScanning, setIsQuickScanning] = useState(false)
-  const [quickScanResult, setQuickScanResult] = useState<any>(null)
-  const [scanError, setScanError] = useState<string | null>(null)
-  const [scannerRef, setScannerRef] = useState<Html5Qrcode | null>(null)
+  const navigate = useNavigate();
+  const { selectedStore } = useStore();
+  const [isQuickScanning, setIsQuickScanning] = useState(false);
+  const [quickScanResult, setQuickScanResult] = useState<any>(null);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const [scannerRef, setScannerRef] = useState<Html5Qrcode | null>(null);
 
   useEffect(() => {
-    // Cleanup scanner on unmount
+    // Cleanup scanner on component unmount
     return () => {
-      if (scannerRef) {
-        scannerRef.stop().catch(() => {})
+      if (scannerRef && scannerRef.isScanning) {
+        scannerRef.stop().catch(() => {
+          console.log('Failed to stop scanner on unmount.');
+        });
       }
-    }
-  }, [scannerRef])
+    };
+  }, [scannerRef]);
 
+  // This is the improved Quick Scan handler
   const startQuickScan = async () => {
-    setScanError(null)
-    setQuickScanResult(null)
+    setScanError(null);
+    setQuickScanResult(null);
 
     try {
-      console.log('Starting quick scan...')
-      
-      // Verify DOM element exists
-      const scannerElement = document.getElementById('quick-scanner')
+      const scannerElement = document.getElementById('quick-scanner');
       if (!scannerElement) {
-        throw new Error('Scanner container not found')
+        throw new Error('Scanner container not found in the DOM.');
       }
 
-      const html5QrCode = new Html5Qrcode('quick-scanner')
-      setScannerRef(html5QrCode)
+      const html5QrCode = new Html5Qrcode('quick-scanner');
+      setScannerRef(html5QrCode);
 
-      const cameras = await Html5Qrcode.getCameras()
-      if (!cameras.length) {
-        throw new Error('No cameras found on this device')
+      const cameras = await Html5Qrcode.getCameras();
+      if (!cameras?.length) {
+        throw new Error('No cameras found on this device.');
       }
 
-      console.log('Found cameras:', cameras.map(c => ({ id: c.id, label: c.label })))
-
-      const camera = cameras.find((cam) =>
-        cam.label.toLowerCase().includes('back') || 
-        cam.label.toLowerCase().includes('environment')
-      ) || cameras[0]
-
-      console.log('Using camera:', camera)
+      // Prefer the back camera
+      const cameraId = cameras.find(cam => cam.label.toLowerCase().includes('back'))?.id || cameras[0].id;
 
       await html5QrCode.start(
-        camera.id,
+        cameraId,
         { fps: 10, qrbox: { width: 250, height: 250 } },
         async (decodedText) => {
-          console.log(`Quick scan result: ${decodedText}`)
-          
+          // --- SUGGESTION APPLIED ---
+          // The scanner is NOT stopped here, allowing for continuous scanning.
+          // We only process the result.
+
           try {
-            await html5QrCode.stop()
-            setScannerRef(null)
-
-            console.log(`Looking up part: ${decodedText} in store: ${selectedStore}`)
-
+            console.log(`Looking up part: ${decodedText} in store: ${selectedStore}`);
             const { data: partData, error: partError } = await supabase
               .from('parts')
               .select('*')
               .eq('part_number', decodedText)
               .eq('store_location', selectedStore)
-              .maybeSingle()
+              .maybeSingle();
 
             if (partError) {
-              console.error('Lookup error:', partError)
-              setScanError(`Database error: ${partError.message}`)
+              setScanError(`Database error: ${partError.message}`);
+              setQuickScanResult(null); // Clear previous success
             } else if (!partData) {
-              setScanError(`Part "${decodedText}" not found in store ${selectedStore}`)
+              setScanError(`Part "${decodedText}" not found in store ${selectedStore}`);
+              setQuickScanResult(null); // Clear previous success
             } else {
-              console.log('Part found:', partData)
-              setQuickScanResult(partData)
+              console.log('Part found:', partData);
+              setQuickScanResult(partData);
+              setScanError(null); // Clear previous error
             }
           } catch (err: any) {
-            console.error('Error processing scan result:', err)
-            setScanError(err.message || 'Failed to process scan')
+            console.error('Error processing scan result:', err);
+            setScanError(err.message || 'Failed to process scan');
+            setQuickScanResult(null); // Clear previous success
           }
         },
         (errorMessage) => {
-          // Only log actual errors, not "NotFoundException" which is normal
           if (!errorMessage.includes('NotFoundException')) {
-            console.debug('Scanner error:', errorMessage)
+            console.debug('Scanner error:', errorMessage);
           }
         }
-      )
-      
-      console.log('Quick scanner started successfully')
+      );
     } catch (err: any) {
-      console.error('Quick scan error:', err)
-      setScanError(err.message || 'Failed to start scanner')
-      if (scannerRef) {
-        try {
-          await scannerRef.stop()
-        } catch {}
-        setScannerRef(null)
+      console.error('Quick scan setup error:', err);
+      setScanError(err.message || 'Failed to start scanner');
+      if (scannerRef && scannerRef.isScanning) {
+        await scannerRef.stop().catch(() => {});
       }
+      setScannerRef(null);
+      setIsQuickScanning(false); // Close modal on setup error
     }
-  }
+  };
 
   const handleQuickScan = () => {
-    setIsQuickScanning(true)
-    // Small delay to ensure DOM element is rendered
+    setIsQuickScanning(true);
     setTimeout(() => {
-      startQuickScan()
-    }, 100)
-  }
+      startQuickScan();
+    }, 100);
+  };
 
   const closeQuickScan = async () => {
-    if (scannerRef) {
+    if (scannerRef && scannerRef.isScanning) {
       try {
-        await scannerRef.stop()
+        await scannerRef.stop();
       } catch (err) {
-        console.log('Scanner already stopped')
+        console.log('Scanner already stopped or failed to stop.');
       }
-      setScannerRef(null)
     }
-    setIsQuickScanning(false)
-    setQuickScanResult(null)
-    setScanError(null)
-  }
+    setScannerRef(null);
+    setIsQuickScanning(false);
+    setQuickScanResult(null);
+    setScanError(null);
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col pb-16">
@@ -152,7 +142,6 @@ export const HomePage: React.FC = () => {
 
         <div className="mb-8">
           <h2 className="text-xl font-semibold text-gray-900 mb-4">Quick Actions</h2>
-          
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <button
               onClick={handleQuickScan}
@@ -163,6 +152,7 @@ export const HomePage: React.FC = () => {
               <span className="text-sm text-gray-500 text-center">Scan to view part info</span>
             </button>
 
+            {/* This navigation is already correct! */}
             <button
               onClick={() => navigate('/lists')}
               className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow flex flex-col items-center"
@@ -172,6 +162,7 @@ export const HomePage: React.FC = () => {
               <span className="text-sm text-gray-500 text-center">View scan lists</span>
             </button>
 
+            {/* This navigation is also already correct! */}
             <button
               onClick={() => navigate('/inventory')}
               className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow flex flex-col items-center"
@@ -194,7 +185,7 @@ export const HomePage: React.FC = () => {
 
       {/* Quick Scan Modal */}
       {isQuickScanning && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg max-w-md w-full p-6">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-semibold">Quick Scan</h3>
@@ -209,21 +200,12 @@ export const HomePage: React.FC = () => {
             {/* Scanner Container */}
             <div
               id="quick-scanner"
-              className="w-full h-64 border-2 border-gray-300 rounded-lg mb-4"
-              style={{
-                minHeight: '256px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: '#f9fafb'
-              }}
-            >
-              {/* Scanner will be injected here */}
-            </div>
+              className="w-full h-64 border-2 border-dashed border-gray-300 rounded-lg mb-4 bg-gray-50"
+            />
 
             {/* Error Display */}
             {scanError && (
-              <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
+              <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded animate-pulse">
                 {scanError}
               </div>
             )}
@@ -239,28 +221,11 @@ export const HomePage: React.FC = () => {
                 )}
               </div>
             )}
-
-            <div className="flex justify-end space-x-2">
-              <button
-                onClick={closeQuickScan}
-                className="px-4 py-2 text-gray-600 border border-gray-300 rounded hover:bg-gray-50"
-              >
-                Close
-              </button>
-              {quickScanResult && (
-                <button
-                  onClick={() => navigate('/scan')}
-                  className="px-4 py-2 bg-orange-600 text-white rounded hover:bg-orange-700"
-                >
-                  Start Full Scan
-                </button>
-              )}
-            </div>
           </div>
         </div>
       )}
 
       <BottomNav />
     </div>
-  )
-}
+  );
+};
