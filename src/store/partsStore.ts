@@ -7,7 +7,8 @@ interface PartsState {
   parts: Part[];
   isLoading: boolean;
   error: string | null;
-  fetchParts: () => Promise<void>;
+  // Modified to accept a storeId
+  fetchParts: (storeId: string) => Promise<void>;
 }
 
 export const usePartsStore = create<PartsState>((set) => ({
@@ -15,12 +16,19 @@ export const usePartsStore = create<PartsState>((set) => ({
   isLoading: false,
   error: null,
 
-  fetchParts: async () => {
+  fetchParts: async (storeId: string) => {
     try {
+      if (!storeId) {
+        // Don't fetch if no store is selected
+        set({ parts: [], isLoading: false });
+        return;
+      }
       set({ isLoading: true, error: null });
       const { data, error } = await supabase
         .from('parts')
         .select('*')
+        // This is the crucial filter
+        .eq('store_location', storeId) 
         .order('part_number', { ascending: true });
 
       if (error) throw error;

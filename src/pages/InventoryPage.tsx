@@ -3,32 +3,44 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { Header } from '../components/Header';
 import { BottomNav } from '../components/BottomNav';
 import { usePartsStore } from '../store/partsStore';
+import { useStore } from '../contexts/StoreContext'; // For getting the selected store
 import { Search } from 'lucide-react';
 
 export const InventoryPage: React.FC = () => {
   const { parts, isLoading, error, fetchParts } = usePartsStore();
+  const { selectedStore, isLoading: isStoreLoading } = useStore(); // Get the selected store
   const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
-    // Fetch parts only if the list is empty
-    if (parts.length === 0) {
-      fetchParts();
+    // Fetch parts for the selected store when it's available
+    if (selectedStore) {
+      fetchParts(selectedStore);
     }
-  }, [fetchParts, parts.length]);
+  }, [fetchParts, selectedStore]); // Re-fetch if the store changes
 
   const filteredParts = useMemo(() => {
     if (!searchTerm) {
       return parts;
     }
+    const lowerCaseSearchTerm = searchTerm.toLowerCase();
+    // This filter is now "null-safe"
     return parts.filter(part =>
-      part.part_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      part.bin_location.toLowerCase().includes(searchTerm.toLowerCase())
+      (part.part_number?.toLowerCase().includes(lowerCaseSearchTerm)) ||
+      (part.bin_location?.toLowerCase().includes(lowerCaseSearchTerm))
     );
   }, [parts, searchTerm]);
 
+  if (isStoreLoading) {
+    return <div className="p-4 text-center">Loading user settings...</div>;
+  }
+
+  if (!selectedStore && !isStoreLoading) {
+    return <div className="p-4 text-center">No store selected. Please select a store from your profile.</div>;
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col pb-16">
-      <Header title="Inventory" showBackButton />
+      <Header title={`Inventory: ${selectedStore}`} showBackButton />
 
       <main className="flex-1 p-4 space-y-4">
         {/* Search Bar */}
@@ -47,7 +59,7 @@ export const InventoryPage: React.FC = () => {
 
         {/* Content Area */}
         <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-          {isLoading && <p className="p-4 text-center text-gray-500">Loading parts...</p>}
+          {isLoading && <p className="p-4 text-center text-gray-500">Loading parts for store {selectedStore}...</p>}
           {error && <p className="p-4 text-center text-red-500">Error: {error}</p>}
 
           {!isLoading && !error && (
@@ -65,7 +77,7 @@ export const InventoryPage: React.FC = () => {
                   </li>
                 ))
               ) : (
-                <p className="p-4 text-center text-gray-500">No parts found.</p>
+                <p className="p-4 text-center text-gray-500">No parts found matching your search.</p>
               )}
             </ul>
           )}
