@@ -27,7 +27,7 @@ export const HomePage: React.FC = () => {
     };
   }, [scannerRef]);
 
-  // This is the improved Quick Scan handler
+  // Quick Scan handler for continuous scanning
   const startQuickScan = async () => {
     setScanError(null);
     setQuickScanResult(null);
@@ -46,17 +46,13 @@ export const HomePage: React.FC = () => {
         throw new Error('No cameras found on this device.');
       }
 
-      // Prefer the back camera
       const cameraId = cameras.find(cam => cam.label.toLowerCase().includes('back'))?.id || cameras[0].id;
 
       await html5QrCode.start(
         cameraId,
         { fps: 10, qrbox: { width: 250, height: 250 } },
         async (decodedText) => {
-          // --- SUGGESTION APPLIED ---
-          // The scanner is NOT stopped here, allowing for continuous scanning.
-          // We only process the result.
-
+          // Continuous scanning: process result without stopping the camera
           try {
             console.log(`Looking up part: ${decodedText} in store: ${selectedStore}`);
             const { data: partData, error: partError } = await supabase
@@ -68,19 +64,19 @@ export const HomePage: React.FC = () => {
 
             if (partError) {
               setScanError(`Database error: ${partError.message}`);
-              setQuickScanResult(null); // Clear previous success
+              setQuickScanResult(null);
             } else if (!partData) {
               setScanError(`Part "${decodedText}" not found in store ${selectedStore}`);
-              setQuickScanResult(null); // Clear previous success
+              setQuickScanResult(null);
             } else {
               console.log('Part found:', partData);
               setQuickScanResult(partData);
-              setScanError(null); // Clear previous error
+              setScanError(null);
             }
           } catch (err: any) {
             console.error('Error processing scan result:', err);
             setScanError(err.message || 'Failed to process scan');
-            setQuickScanResult(null); // Clear previous success
+            setQuickScanResult(null);
           }
         },
         (errorMessage) => {
@@ -96,7 +92,7 @@ export const HomePage: React.FC = () => {
         await scannerRef.stop().catch(() => {});
       }
       setScannerRef(null);
-      setIsQuickScanning(false); // Close modal on setup error
+      setIsQuickScanning(false);
     }
   };
 
@@ -126,11 +122,11 @@ export const HomePage: React.FC = () => {
       <Header title="Inventory Scanner" />
 
       <main className="flex-1 p-4">
+        {/* Welcome Banner */}
         <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg shadow-lg p-6 mb-6">
           <h1 className="text-2xl font-bold text-white mb-2">Welcome Back</h1>
           <p className="text-orange-100 mb-4">Your mobile inventory scanning assistant</p>
           <p className="text-orange-200 text-sm mb-6">Store: {selectedStore}</p>
-
           <button
             onClick={() => navigate('/scan')}
             className="bg-white text-orange-600 px-6 py-3 rounded-lg font-medium shadow-md hover:shadow-lg transition-shadow flex items-center"
@@ -140,6 +136,7 @@ export const HomePage: React.FC = () => {
           </button>
         </div>
 
+        {/* Quick Actions */}
         <div className="mb-8">
           <h2 className="text-xl font-semibold text-gray-900 mb-4">Quick Actions</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -151,8 +148,6 @@ export const HomePage: React.FC = () => {
               <span className="font-medium text-gray-900">Quick Scan</span>
               <span className="text-sm text-gray-500 text-center">Scan to view part info</span>
             </button>
-
-            {/* This navigation is already correct! */}
             <button
               onClick={() => navigate('/lists')}
               className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow flex flex-col items-center"
@@ -161,8 +156,6 @@ export const HomePage: React.FC = () => {
               <span className="font-medium text-gray-900">My Lists</span>
               <span className="text-sm text-gray-500 text-center">View scan lists</span>
             </button>
-
-            {/* This navigation is also already correct! */}
             <button
               onClick={() => navigate('/inventory')}
               className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow flex flex-col items-center"
@@ -174,7 +167,7 @@ export const HomePage: React.FC = () => {
           </div>
         </div>
 
-        {/* Recent Activity placeholder */}
+        {/* Recent Activity */}
         <div className="mb-6">
           <h2 className="text-xl font-semibold text-gray-900 mb-4">Recent Activity</h2>
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 text-center">
@@ -186,7 +179,8 @@ export const HomePage: React.FC = () => {
       {/* Quick Scan Modal */}
       {isQuickScanning && (
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-md w-full p-6">
+          {/* 👇 MODIFIED THIS DIV 👇 */}
+          <div className="bg-white rounded-lg max-w-md w-full p-6 flex flex-col">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-semibold">Quick Scan</h3>
               <button
@@ -197,30 +191,34 @@ export const HomePage: React.FC = () => {
               </button>
             </div>
 
-            {/* Scanner Container */}
+            {/* 👇 MODIFIED THIS DIV 👇 */}
             <div
               id="quick-scanner"
-              className="w-full h-64 border-2 border-dashed border-gray-300 rounded-lg mb-4 bg-gray-50"
+              className="w-full border-2 border-dashed border-gray-300 rounded-lg mb-4 bg-gray-50 overflow-hidden"
+              style={{ minHeight: '200px', maxHeight: '200px' }} // Constrain height
             />
 
-            {/* Error Display */}
-            {scanError && (
-              <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded animate-pulse">
-                {scanError}
-              </div>
-            )}
+            {/* This container now holds the results and will not be overlapped */}
+            <div className="flex-shrink-0">
+              {/* Error Display */}
+              {scanError && (
+                <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
+                  {scanError}
+                </div>
+              )}
 
-            {/* Result Display */}
-            {quickScanResult && (
-              <div className="mb-4 p-4 bg-green-100 border border-green-400 rounded">
-                <h4 className="font-semibold text-green-800">Part Found!</h4>
-                <p><strong>Part:</strong> {quickScanResult.part_number}</p>
-                <p><strong>Bin:</strong> {quickScanResult.bin_location}</p>
-                {quickScanResult.description && (
-                  <p><strong>Description:</strong> {quickScanResult.description}</p>
-                )}
-              </div>
-            )}
+              {/* Result Display */}
+              {quickScanResult && (
+                <div className="mb-4 p-4 bg-green-100 border border-green-400 rounded">
+                  <h4 className="font-semibold text-green-800">Part Found!</h4>
+                  <p><strong>Part:</strong> {quickScanResult.part_number}</p>
+                  <p><strong>Bin:</strong> {quickScanResult.bin_location}</p>
+                  {quickScanResult.description && (
+                    <p><strong>Description:</strong> {quickScanResult.description}</p>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
