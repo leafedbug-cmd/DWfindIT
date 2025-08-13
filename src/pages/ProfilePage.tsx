@@ -1,113 +1,82 @@
-import React, { useEffect } from 'react';
-import { User, Settings, Info, Moon, Bell, Shield, LogOut } from 'lucide-react';
+// src/pages/ProfilePage.tsx
+import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Header } from '../components/Header';
 import { BottomNav } from '../components/BottomNav';
 import { useAuthStore } from '../store/authStore';
+import { useStore } from '../contexts/StoreContext';
+import { LogOut, User, MapPin } from 'lucide-react';
+
+// A list of available stores. In a real app, you might fetch this from a 'stores' table.
+const availableStores = ["01", "02", "03", "04", "05", "06", "07", "08"];
 
 export const ProfilePage: React.FC = () => {
-  const { user, signOut, refreshUser } = useAuthStore();
   const navigate = useNavigate();
-  
-  useEffect(() => {
-    if (!user) {
-      navigate('/login');
-    } else {
-      refreshUser();
-    }
-  }, [user, navigate, refreshUser]);
-  
+  const { user, signOut } = useAuthStore();
+  const { selectedStore, setSelectedStore, isLoading: isStoreLoading } = useStore();
+
   const handleSignOut = async () => {
     await signOut();
-    navigate('/login');
+    navigate('/login', { replace: true });
   };
-  
-  const MenuItem = ({ icon, title, subtitle, onClick }: { 
-    icon: React.ReactNode, 
-    title: string, 
-    subtitle: string,
-    onClick?: () => void
-  }) => (
-    <div 
-      className="flex items-center p-4 cursor-pointer hover:bg-gray-50"
-      onClick={onClick}
-    >
-      <div className="mr-4">{icon}</div>
-      <div className="flex-1">
-        <h3 className="text-gray-900 font-medium">{title}</h3>
-        <p className="text-sm text-gray-500">{subtitle}</p>
+
+  const handleStoreChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setSelectedStore(e.target.value);
+  };
+
+  // This prevents the white screen crash.
+  // It shows a loading indicator while the user's profile and store are being fetched.
+  if (isStoreLoading || !user) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600"></div>
       </div>
-      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400">
-        <path d="M9 18l6-6-6-6"/>
-      </svg>
-    </div>
-  );
-  
-  if (!user) return null;
-  
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col pb-16">
       <Header title="Profile" />
-      
-      <main className="flex-1 p-4">
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden mb-6">
-          <div className="bg-gradient-to-r from-orange-600 to-orange-800 px-4 py-5 sm:px-6">
-            <div className="flex items-center">
-              <div className="bg-white/20 p-3 rounded-full">
-                <User className="h-8 w-8 text-white" />
-              </div>
-              <div className="ml-4">
-                <h2 className="text-lg font-medium text-white">{user.email}</h2>
-                <p className="text-orange-100 text-sm">Account Settings</p>
-              </div>
+
+      <main className="flex-1 p-4 space-y-6">
+        {/* User Info Card */}
+        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 flex items-center space-x-4">
+          <div className="bg-orange-100 p-3 rounded-full">
+            <User className="h-8 w-8 text-orange-600" />
+          </div>
+          <div>
+            <p className="text-sm text-gray-500">Logged in as</p>
+            <h2 className="text-lg font-semibold text-gray-900">{user.email}</h2>
+          </div>
+        </div>
+
+        {/* Store Selector Card */}
+        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+          <div className="flex items-center space-x-4">
+            <div className="bg-blue-100 p-3 rounded-full">
+              <MapPin className="h-8 w-8 text-blue-600" />
+            </div>
+            <div>
+              <label htmlFor="store-select" className="text-sm text-gray-500">
+                Your current store location
+              </label>
+              <select
+                id="store-select"
+                value={selectedStore || ''}
+                onChange={handleStoreChange}
+                className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-orange-500 focus:border-orange-500 sm:text-lg rounded-md font-semibold"
+              >
+                {availableStores.map(store => (
+                  <option key={store} value={store}>
+                    Store #{store}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
-          
-          <div className="divide-y divide-gray-200">
-            <MenuItem 
-              icon={<Settings className="h-5 w-5 text-gray-500" />}
-              title="Account Settings"
-              subtitle="Update your profile information"
-            />
-            <MenuItem 
-              icon={<Bell className="h-5 w-5 text-gray-500" />}
-              title="Notifications"
-              subtitle="Configure notification preferences"
-            />
-            <MenuItem 
-              icon={<Moon className="h-5 w-5 text-gray-500" />}
-              title="Appearance"
-              subtitle="Light and dark mode settings"
-            />
-          </div>
         </div>
-        
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden mb-6">
-          <div className="px-4 py-3 bg-gray-50 text-gray-700 font-medium">
-            Security
-          </div>
-          <div className="divide-y divide-gray-200">
-            <MenuItem 
-              icon={<Shield className="h-5 w-5 text-gray-500" />}
-              title="Privacy Settings"
-              subtitle="Manage your data and privacy"
-            />
-          </div>
-        </div>
-        
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden mb-6">
-          <div className="px-4 py-3 bg-gray-50 text-gray-700 font-medium">
-            About
-          </div>
-          <div className="divide-y divide-gray-200">
-            <MenuItem 
-              icon={<Info className="h-5 w-5 text-gray-500" />}
-              title="About The App"
-              subtitle="Version information and credits"
-            />
-          </div>
-        </div>
-        
+
+        {/* Sign Out Button */}
         <button
           onClick={handleSignOut}
           className="w-full flex items-center justify-center p-4 bg-red-50 text-red-600 rounded-lg font-medium hover:bg-red-100 transition-colors"
@@ -116,7 +85,7 @@ export const ProfilePage: React.FC = () => {
           Sign Out
         </button>
       </main>
-      
+
       <BottomNav />
     </div>
   );
