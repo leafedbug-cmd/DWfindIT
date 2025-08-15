@@ -21,39 +21,29 @@ export const ScanPage: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [viewMode, setViewMode] = useState<'view' | 'add'>('view');
   const [lastScannedPart, setLastScannedPart] = useState<any>(null);
-  const [cameraError, setCameraError] = useState<string | null>(null); // Separate camera errors
+  const [cameraError, setCameraError] = useState<string | null>(null);
 
-  // Load lists on mount
   useEffect(() => {
     if (lists.length === 0) fetchLists();
   }, [lists, fetchLists]);
 
-  // Set default list
   useEffect(() => {
     if (lists.length > 0 && !currentList) {
       setCurrentList(lists[0]);
     }
   }, [lists, currentList, setCurrentList]);
 
-  // Memoize the scan handler to prevent BarcodeScanner re-renders
+  // --- UPDATED HANDLESCAN FUNCTION ---
   const handleScan = useCallback(async (barcode: string) => {
-    if (isProcessing) return;
-    
-    console.log('📷 Processing barcode scan:', barcode);
+    if (isProcessing) return; // Prevent multiple scans at once
+
+    setIsProcessing(true);
     setScanError(null);
     setScanSuccess(null);
     setLastScannedPart(null);
 
     try {
-      setIsProcessing(true);
-
-      // DEBUG: Check current user and list ownership
-      const { data: { user } } = await supabase.auth.getUser();
-      console.log('🔐 Current user:', user?.id);
-      console.log('📋 Current list:', currentList);
-      console.log('🏪 Selected store:', selectedStore);
-
-      // Fetch part from Supabase, using maybeSingle to avoid 406s
+      // 1. Find the part in the 'parts' table
       const { data: partData, error: partError } = await supabase
         .from('parts')
         .select('*')
@@ -64,89 +54,52 @@ export const ScanPage: React.FC = () => {
       if (partError || !partData) {
         throw new Error(`Part "${barcode}" not found in store ${selectedStore}.`);
       }
+      
+      // Immediately show the user what was found
       setLastScannedPart(partData);
+      setScanSuccess(`Found: ${partData.part_number}`);
 
-      // VIEW mode: just show the result
-      if (viewMode === 'view') {
-        setScanSuccess(`${barcode} → Bin: ${partData.bin_location}`);
-        return;
-      }
+      // 2. If we are in 'add' mode, proceed to save the item
+      if (viewMode === 'add') {
+        if (!currentList) {
+          throw new Error('No list is selected to add the item to.');
+        }
 
-      // ADD mode: insert or update in scan_items
-      if (!currentList) {
-        throw new Error('No list selected.');
-      }
-
-      // DEBUG: Verify list belongs to current user
-      const { data: listCheck, error: listError } = await supabase
-        .from('lists')
-        .select('id, name, user_id')
-        .eq('id', currentList.id)
-        .single();
-
-      console.log('📝 List ownership check:', { listCheck, listError, userMatches: listCheck?.user_id === user?.id });
-
-      if (listError || !listCheck) {
-        throw new Error('List not found or access denied');
-      }
-
-      if (listCheck.user_id !== user?.id) {
-        throw new Error('You do not have permission to add items to this list');
-      }
-
-      const { data: existingItem } = await supabase
-        .from('scan_items')
-        .select('*')
-        .eq('barcode', barcode)
-        .eq('list_id', currentList.id)
-        .maybeSingle();
-
-      if (existingItem) {
-        const newQty = existingItem.quantity + 1;
-        const { error: updateError } = await supabase
-          .from('scan_items')
-          .update({ quantity: newQty })
-          .eq('id', existingItem.id);
-        if (updateError) throw updateError;
-        setScanSuccess(`Updated ${barcode} quantity to ${newQty}`);
-      } else {
-        // FIXED: Include ALL fields that exist in your scan_items table
-        const scanItemData = {
-          barcode: barcode,
+        // 3. Construct the COMPLETE object with all necessary fields
+        const newItemData = {
+          list_id: currentList.id,        // <-- The missing piece
+          barcode: barcode,               // <-- The other missing piece
           part_number: partData.part_number,
           bin_location: partData.bin_location,
-          store_location: partData.store_location, // Include this since it exists in your table
-          list_id: currentList.id,
-          quantity: 1,
-          notes: ''
-          // Let database auto-handle: id, created_at, updated_at
+          store_location: partData.store_location,
+          quantity: 1, // You can adjust this if needed
+          notes: '',   // Default empty notes
         };
 
-        console.log('💾 Saving scan item with exact data:', scanItemData);
-        
-        await addItem(scanItemData);
-        setScanSuccess(`Added ${barcode} to list`);
+        // 4. Call addItem with the complete, correct data
+        await addItem(newItemData);
+        setScanSuccess(`Added ${partData.part_number} to list: ${currentList.name}`);
       }
-    } catch (error: any) {
-      console.error('Scan processing error:', error);
-      setScanError(error.message);
+    } catch (err: any) {
+      console.error('Scan processing error:', err);
+      setScanError(err.message);
     } finally {
       setIsProcessing(false);
-      // clear notifications after a few seconds
-      setTimeout(() => setScanError(null), 3000);
-      setTimeout(() => setScanSuccess(null), 3000);
+      // Auto-clear success/error messages after 3 seconds
+      setTimeout(() => {
+        setScanSuccess(null);
+        setScanError(null);
+      }, 3000);
     }
-  }, [isProcessing, selectedStore, viewMode, currentList, addItem]);
+  }, [isProcessing, selectedStore, currentList, viewMode, addItem]);
+  // --- END OF UPDATED FUNCTION ---
 
-  // Separate camera error handler that doesn't affect scanner state
   const handleCameraError = useCallback((error: string) => {
     console.error('Camera error:', error);
     setCameraError(error);
-    // Auto-clear camera errors after 5 seconds
     setTimeout(() => setCameraError(null), 5000);
   }, []);
 
-  // Memoize BarcodeScanner to prevent unnecessary re-renders
   const barcodeScannerComponent = useMemo(() => (
     <BarcodeScanner 
       onScanSuccess={handleScan} 
@@ -168,39 +121,63 @@ export const ScanPage: React.FC = () => {
 
       <main className="flex-1 p-4 space-y-4">
         {/* Mode Toggle */}
-        <div className="flex space-x-4">
+        <div className="flex bg-gray-200 p-1 rounded-lg">
           <button
-            className={viewMode === 'view' ? 'font-bold text-orange-600' : 'text-gray-600'}
+            className={`w-1/2 p-2 rounded-md font-semibold text-sm transition-colors ${
+              viewMode === 'view' ? 'bg-white text-orange-600 shadow' : 'text-gray-600'
+            }`}
             onClick={() => setViewMode('view')}
           >
-            View
+            View Part Info
           </button>
           <button
-            className={viewMode === 'add' ? 'font-bold text-orange-600' : 'text-gray-600'}
+            className={`w-1/2 p-2 rounded-md font-semibold text-sm transition-colors ${
+              viewMode === 'add' ? 'bg-white text-orange-600 shadow' : 'text-gray-600'
+            }`}
             onClick={() => setViewMode('add')}
           >
             Add to List
           </button>
         </div>
-
-        {/* Camera Scanner - Memoized to prevent re-mounting */}
-        {barcodeScannerComponent}
-
-        {/* Camera Error Display */}
-        {cameraError && (
-          <div className="p-2 bg-red-100 text-red-800 rounded">
-            Camera Error: {cameraError}
+        
+        {/* List Selector for Add Mode */}
+        {viewMode === 'add' && (
+          <div className="bg-white p-3 rounded-lg shadow-sm">
+            <label htmlFor="list-select" className="block text-sm font-medium text-gray-700 mb-1">
+              Selected List:
+            </label>
+            <select
+              id="list-select"
+              value={currentList?.id || ''}
+              onChange={(e) => {
+                const selectedList = lists.find(l => l.id === e.target.value);
+                setCurrentList(selectedList || null);
+              }}
+              className="w-full p-2 border border-gray-300 rounded-md shadow-sm"
+            >
+              {lists.map(list => (
+                <option key={list.id} value={list.id}>{list.name}</option>
+              ))}
+            </select>
           </div>
         )}
 
-        {/* Scan Processing Feedback */}
+        {/* Camera Scanner */}
+        {barcodeScannerComponent}
+
+        {/* Feedback Area */}
+        {cameraError && (
+          <div className="p-3 bg-red-100 text-red-800 rounded-lg text-center">
+            Camera Error: {cameraError}
+          </div>
+        )}
         {scanError && (
-          <div className="p-2 bg-red-100 text-red-800 rounded">
+          <div className="p-3 bg-red-100 text-red-800 rounded-lg text-center">
             {scanError}
           </div>
         )}
         {scanSuccess && (
-          <div className="p-2 bg-green-100 text-green-800 rounded">
+          <div className="p-3 bg-green-100 text-green-800 rounded-lg text-center">
             {scanSuccess}
           </div>
         )}
@@ -211,10 +188,10 @@ export const ScanPage: React.FC = () => {
           isLoading={isProcessing}
           error={scanError}
           clearResult={clearRecentScan}
+          // The onSave prop may no longer be needed if all logic is in handleScan
           onSave={(updates) => {
-            if (lastScannedPart) {
-              addItem({ ...lastScannedPart, ...updates });
-            }
+            // This logic could be for editing notes/quantity AFTER a scan
+            console.log("Save clicked in ScanResult:", updates)
           }}
         />
       </main>
