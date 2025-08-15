@@ -7,8 +7,8 @@ interface PartsState {
   parts: Part[];
   isLoading: boolean;
   error: string | null;
-  // Modified to accept a storeId
-  fetchParts: (storeId: string) => Promise<void>;
+  // This function now takes a search term
+  searchParts: (storeId: string, searchTerm: string) => Promise<void>;
 }
 
 export const usePartsStore = create<PartsState>((set) => ({
@@ -16,20 +16,21 @@ export const usePartsStore = create<PartsState>((set) => ({
   isLoading: false,
   error: null,
 
-  fetchParts: async (storeId: string) => {
+  searchParts: async (storeId, searchTerm) => {
     try {
-      if (!storeId) {
-        // Don't fetch if no store is selected
-        set({ parts: [], isLoading: false });
+      if (!storeId || !searchTerm) {
+        set({ parts: [] }); // Clear results if no store or search term
         return;
       }
       set({ isLoading: true, error: null });
+
       const { data, error } = await supabase
         .from('parts')
         .select('*')
-        // This is the crucial filter
-        .eq('store_location', storeId) 
-        .order('part_number', { ascending: true });
+        .eq('store_location', storeId)
+        // This 'or' condition searches both part_number and bin_location
+        .or(`part_number.ilike.%${searchTerm}%,bin_location.ilike.%${searchTerm}%`)
+        .limit(50); // Limit results to a reasonable number, e.g., 50
 
       if (error) throw error;
 

@@ -1,42 +1,27 @@
 // src/pages/InventoryPage.tsx
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Header } from '../components/Header';
 import { BottomNav } from '../components/BottomNav';
 import { usePartsStore } from '../store/partsStore';
-import { useStore } from '../contexts/StoreContext'; // For getting the selected store
+import { useStore } from '../contexts/StoreContext';
+import { useDebounce } from '../hooks/useDebounce'; // Import the new hook
 import { Search } from 'lucide-react';
 
 export const InventoryPage: React.FC = () => {
-  const { parts, isLoading, error, fetchParts } = usePartsStore();
-  const { selectedStore, isLoading: isStoreLoading } = useStore(); // Get the selected store
+  // The store now gives us a search function instead of fetchParts
+  const { parts, isLoading, error, searchParts } = usePartsStore();
+  const { selectedStore } = useStore();
   const [searchTerm, setSearchTerm] = useState('');
 
+  // Use the debounce hook
+  const debouncedSearchTerm = useDebounce(searchTerm, 300); // 300ms delay
+
   useEffect(() => {
-    // Fetch parts for the selected store when it's available
-    if (selectedStore) {
-      fetchParts(selectedStore);
+    // This effect runs whenever the user stops typing
+    if (debouncedSearchTerm && selectedStore) {
+      searchParts(selectedStore, debouncedSearchTerm);
     }
-  }, [fetchParts, selectedStore]); // Re-fetch if the store changes
-
-  const filteredParts = useMemo(() => {
-    if (!searchTerm) {
-      return parts;
-    }
-    const lowerCaseSearchTerm = searchTerm.toLowerCase();
-    // This filter is now "null-safe"
-    return parts.filter(part =>
-      (part.part_number?.toLowerCase().includes(lowerCaseSearchTerm)) ||
-      (part.bin_location?.toLowerCase().includes(lowerCaseSearchTerm))
-    );
-  }, [parts, searchTerm]);
-
-  if (isStoreLoading) {
-    return <div className="p-4 text-center">Loading user settings...</div>;
-  }
-
-  if (!selectedStore && !isStoreLoading) {
-    return <div className="p-4 text-center">No store selected. Please select a store from your profile.</div>;
-  }
+  }, [debouncedSearchTerm, selectedStore, searchParts]); // Re-run when debounced term changes
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col pb-16">
@@ -59,14 +44,14 @@ export const InventoryPage: React.FC = () => {
 
         {/* Content Area */}
         <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-          {isLoading && <p className="p-4 text-center text-gray-500">Loading parts for store {selectedStore}...</p>}
+          {isLoading && <p className="p-4 text-center text-gray-500">Searching...</p>}
           {error && <p className="p-4 text-center text-red-500">Error: {error}</p>}
 
           {!isLoading && !error && (
             <ul className="divide-y divide-gray-200">
-              {filteredParts.length > 0 ? (
-                filteredParts.map(part => (
-                  <li key={part.part_number} className="p-4 flex justify-between items-center">
+              {parts.length > 0 ? (
+                parts.map(part => (
+                  <li key={part.id} className="p-4 flex justify-between items-center">
                     <div>
                       <p className="font-semibold text-gray-900">{part.part_number}</p>
                       <p className="text-sm text-gray-500">{part.description || 'No description'}</p>
@@ -77,7 +62,9 @@ export const InventoryPage: React.FC = () => {
                   </li>
                 ))
               ) : (
-                <p className="p-4 text-center text-gray-500">No parts found matching your search.</p>
+                <p className="p-4 text-center text-gray-500">
+                  {searchTerm ? 'No parts found.' : 'Enter a search term to begin.'}
+                </p>
               )}
             </ul>
           )}
