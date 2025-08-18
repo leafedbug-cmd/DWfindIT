@@ -1,6 +1,6 @@
 // src/components/ScanResult.tsx
 import React, { useState, useEffect } from 'react';
-import { UnifiedScanResult } from '../pages/ScanPage'; // Import the new type
+import type { UnifiedScanResult } from '../pages/ScanPage';
 import { Tag, Package, Hash, Pencil, Save, X } from 'lucide-react';
 
 interface ScanResultProps {
@@ -43,9 +43,11 @@ export const ScanResult: React.FC<ScanResultProps> = ({ item, isLoading, onSave,
   return (
     <div className="bg-white p-4 rounded-lg shadow-sm border space-y-4">
       {/* Item Type Indicator */}
-      <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-        item.type === 'part' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'
-      }`}>
+      <div
+        className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+          item.type === 'part' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'
+        }`}
+      >
         {item.type === 'part' ? <Package className="h-4 w-4 mr-2" /> : <Tag className="h-4 w-4 mr-2" />}
         {item.type === 'part' ? 'Part' : 'Equipment'}
       </div>
@@ -69,7 +71,9 @@ export const ScanResult: React.FC<ScanResultProps> = ({ item, isLoading, onSave,
       {/* Quantity Input */}
       <div className="flex items-center space-x-2">
         <Hash className="h-5 w-5 text-gray-400" />
-        <label htmlFor="quantity" className="font-medium text-gray-700">Quantity</label>
+        <label htmlFor="quantity" className="font-medium text-gray-700">
+          Quantity
+        </label>
         <input
           type="number"
           id="quantity"
@@ -93,11 +97,22 @@ export const ScanResult: React.FC<ScanResultProps> = ({ item, isLoading, onSave,
 
       {/* Action Buttons */}
       <div className="flex space-x-2">
-        <button onClick={onClear} className="flex-1 flex items-center justify-center p-3 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300">
+        <button
+          onClick={onClear}
+          className="flex-1 flex items-center justify-center p-3 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300"
+        >
           <X className="h-5 w-5 mr-2" /> Clear
         </button>
-        <button onClick={handleSave} className="flex-1 flex items-center justify-center p-3 bg-orange-600 text-white rounded-lg font-semibold hover:bg-orange-700 disabled:bg-gray-400" disabled={isLoading}>
-          {isLoading ? 'Saving...' : <><Save className="h-5 w-5 mr-2" /> Save to List</>}
+        <button
+          onClick={handleSave}
+          className="flex-1 flex items-center justify-center p-3 bg-orange-600 text-white rounded-lg font-semibold hover:bg-orange-700 disabled:bg-gray-400"
+          disabled={isLoading}
+        >
+          {isLoading ? 'Saving...' : (
+            <>
+              <Save className="h-5 w-5 mr-2" /> Save to List
+            </>
+          )}
         </button>
       </div>
     </div>
