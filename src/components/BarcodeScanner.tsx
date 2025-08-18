@@ -1,6 +1,6 @@
 // src/components/BarcodeScanner.tsx
 import React, { useEffect, useRef, useState, useCallback } from 'react'
-import { Html5Qrcode } from 'html5-qrcode'
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode'
 
 interface BarcodeScannerProps {
   onScanSuccess: (barcode: string) => void
@@ -11,7 +11,7 @@ const SCAN_COOLDOWN_MS = 3000 // 3s cooldown for duplicate scans
 
 export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, onScanError }) => {
   const [cameras, setCameras] = useState<any[]>([])
-  const [selectedCameraId, setSelectedCameraId] = useState<string>('')
+  the [selectedCameraId, setSelectedCameraId] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
   const [isInitialized, setIsInitialized] = useState(false)
   const [initializationStatus, setInitializationStatus] = useState<string>('Initializing...')
@@ -26,30 +26,43 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, o
 
   const startScanner = useCallback(async () => {
     if (!html5QrCodeRef.current || !selectedCameraId || isScanning || !mountedRef.current) return
-    
+
     console.log('Starting scanner with camera:', selectedCameraId)
     setIsScanning(true)
 
     try {
       await html5QrCodeRef.current.start(
         selectedCameraId,
-        { 
-          fps: 10, 
+        {
+          fps: 10,
           qrbox: { width: 250, height: 250 },
-          aspectRatio: 1.0
+          aspectRatio: 1.0,
+          // Limit to common 1D codes and enable native detector if available
+          formatsToSupport: [
+            Html5QrcodeSupportedFormats.CODE_128,
+            Html5QrcodeSupportedFormats.CODE_39,
+            Html5QrcodeSupportedFormats.EAN_13,
+            Html5QrcodeSupportedFormats.EAN_8,
+            Html5QrcodeSupportedFormats.UPC_A,
+            Html5QrcodeSupportedFormats.UPC_E,
+            Html5QrcodeSupportedFormats.QR_CODE
+          ],
+          experimentalFeatures: {
+            useBarCodeDetectorIfSupported: true
+          }
         },
         decodedText => {
           if (!mountedRef.current) return
-          
+
           const now = Date.now()
           if (decodedText === lastScanned.current && now - lastScanTime.current < SCAN_COOLDOWN_MS) {
             return
           }
-          
+
           console.log('Barcode scanned:', decodedText)
           lastScanned.current = decodedText
           lastScanTime.current = now
-          
+
           // Flash border to show successful scan
           const reader = document.getElementById('reader')
           if (reader) {
@@ -58,10 +71,10 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, o
               if (mountedRef.current) reader.style.border = '2px solid #e5e7eb'
             }, 300)
           }
-          
+
           // Call the success handler
           onScanSuccess(decodedText)
-          
+
           // Start cooldown to prevent duplicate scans
           startCooldown()
         },
@@ -105,18 +118,18 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, o
       try {
         setInitializationStatus('Checking for camera access...')
         console.log('Initializing Html5Qrcode scanner...')
-        
+
         // Wait a moment for DOM to be ready
         await new Promise(resolve => setTimeout(resolve, 100))
-        
+
         // Verify the reader element exists
         const readerElement = document.getElementById('reader')
         if (!readerElement) {
           throw new Error('Scanner container not found in DOM')
         }
-        
+
         console.log('Reader element found:', readerElement)
-        
+
         // Clean up any existing scanner first
         if (html5QrCodeRef.current) {
           try {
@@ -124,25 +137,25 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, o
           } catch {}
           html5QrCodeRef.current = null
         }
-        
+
         html5QrCodeRef.current = new Html5Qrcode('reader')
 
         setInitializationStatus('Requesting camera permissions...')
         console.log('Getting available cameras...')
         const devices = await Html5Qrcode.getCameras()
-        
+
         if (!mountedRef.current) return
 
         if (devices.length) {
           console.log('Found cameras:', devices.map(d => ({ id: d.id, label: d.label })))
           setCameras(devices)
-          
+
           // Prefer back/environment camera
-          const backCamera = devices.find(d => 
-            /back|environment/i.test(d.label) || 
+          const backCamera = devices.find(d =>
+            /back|environment/i.test(d.label) ||
             /rear/i.test(d.label)
           ) || devices[0]
-          
+
           console.log('Selected camera:', backCamera)
           setSelectedCameraId(backCamera.id)
           setIsInitialized(true)
@@ -215,12 +228,16 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, o
       <div className="p-4 bg-red-100 text-red-700 rounded">
         <div className="flex items-center mb-2">
           <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
-            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+            <path
+              fillRule="evenodd"
+              d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+              clipRule="evenodd"
+            />
           </svg>
           <span className="font-medium">Camera Error</span>
         </div>
         <p className="mb-3">{error}</p>
-        <button 
+        <button
           onClick={handleRetry}
           className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
         >
@@ -249,8 +266,8 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, o
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Select Camera:
           </label>
-          <select 
-            value={selectedCameraId} 
+          <select
+            value={selectedCameraId}
             onChange={e => handleCameraChange(e.target.value)}
             className="w-full p-2 border border-gray-300 rounded-md focus:ring-orange-500 focus:border-orange-500"
           >
