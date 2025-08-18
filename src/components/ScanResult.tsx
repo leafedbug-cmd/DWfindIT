@@ -1,6 +1,6 @@
 // src/components/ScanResult.tsx
 import React, { useState, useEffect } from 'react';
-import { UnifiedScanResult } from '../pages/ScanPage'; // Import the new type
+import type { UnifiedScanResult } from '../pages/ScanPage';
 import { Tag, Package, Hash, Pencil, Save, X } from 'lucide-react';
 
 interface ScanResultProps {
@@ -97,7 +97,9 @@ export const ScanResult: React.FC<ScanResultProps> = ({ item, isLoading, onSave,
           <X className="h-5 w-5 mr-2" /> Clear
         </button>
         <button onClick={handleSave} className="flex-1 flex items-center justify-center p-3 bg-orange-600 text-white rounded-lg font-semibold hover:bg-orange-700 disabled:bg-gray-400" disabled={isLoading}>
-          {isLoading ? 'Saving...' : <><Save className="h-5 w-5 mr-2" /> Save to List</>}
+          {isLoading ? 'Saving...' : <>
+            <Save className="h-5 w-5 mr-2" /> Save to List
+          </>}
         </button>
       </div>
     </div>
