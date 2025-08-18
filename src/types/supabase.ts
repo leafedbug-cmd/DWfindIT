@@ -9,6 +9,48 @@ export type Json =
 export interface Database {
   public: {
     Tables: {
+      equipment: {
+        Row: {
+          stock_number: string
+          barcode: string | null
+          serial_number: string | null
+          make: string | null
+          model: string | null
+          customer_number: string | null
+          customer: string | null
+          description: string | null
+          store_location: string | null
+          created_at: string
+          updated_at: string | null
+        }
+        Insert: {
+          stock_number: string
+          barcode?: string | null
+          serial_number?: string | null
+          make?: string | null
+          model?: string | null
+          customer_number?: string | null
+          customer?: string | null
+          description?: string | null
+          store_location?: string | null
+          created_at?: string
+          updated_at?: string | null
+        }
+        Update: {
+          stock_number?: string
+          barcode?: string | null
+          serial_number?: string | null
+          make?: string | null
+          model?: string | null
+          customer_number?: string | null
+          customer?: string | null
+          description?: string | null
+          store_location?: string | null
+          created_at?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       lists: {
         Row: {
           id: string
@@ -37,6 +79,64 @@ export interface Database {
           }
         ]
       }
+      parts: {
+        Row: {
+          id: string
+          part_number: string
+          bin_location: string
+          store_location: string
+          description: string | null
+          created_at: string
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          part_number: string
+          bin_location: string
+          store_location: string
+          description?: string | null
+          created_at?: string
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          part_number?: string
+          bin_location?: string
+          store_location?: string
+          description?: string | null
+          created_at?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          id: string
+          store_location: string | null
+          employee_name: string | null
+          created_at: string
+        }
+        Insert: {
+          id: string
+          store_location?: string | null
+          employee_name?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          store_location?: string | null
+          employee_name?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profiles_id_fkey"
+            columns: ["id"]
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       scan_items: {
         Row: {
           id: string
@@ -45,6 +145,7 @@ export interface Database {
           list_id: string
           part_number: string
           bin_location: string
+          store_location: string | null
           quantity: number
           notes: string | null
         }
@@ -55,6 +156,7 @@ export interface Database {
           list_id: string
           part_number: string
           bin_location: string
+          store_location?: string | null
           quantity?: number
           notes?: string | null
         }
@@ -65,6 +167,7 @@ export interface Database {
           list_id?: string
           part_number?: string
           bin_location?: string
+          store_location?: string | null
           quantity?: number
           notes?: string | null
         }
