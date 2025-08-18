@@ -1,5 +1,5 @@
 // src/pages/HomePage.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Header } from '../components/Header';
 import { BottomNav } from '../components/BottomNav';
@@ -11,50 +11,63 @@ import { useStore } from '../contexts/StoreContext';
 export const HomePage: React.FC = () => {
   const navigate = useNavigate();
   const { selectedStore } = useStore();
+
   const [isQuickScanning, setIsQuickScanning] = useState(false);
   const [quickScanResult, setQuickScanResult] = useState<any>(null);
   const [scanError, setScanError] = useState<string | null>(null);
-  const [scannerRef, setScannerRef] = useState<Html5Qrcode | null>(null);
+  const [isStarting, setIsStarting] = useState(false);
+
+  // Keep the scanner instance in a ref so we can reliably stop/clear it
+  const scannerRef = useRef<Html5Qrcode | null>(null);
+
+  // ---- utilities -----------------------------------------------------------
+
+  const cleanupScanner = async () => {
+    const s = scannerRef.current;
+    if (!s) return;
+    try { await s.stop(); } catch {}
+    try { await s.clear(); } catch {}
+    scannerRef.current = null;
+  };
 
   useEffect(() => {
-    // Cleanup scanner on component unmount
-    return () => {
-      if (scannerRef && scannerRef.isScanning) {
-        scannerRef.stop().catch(() => {
-          console.log('Failed to stop scanner on unmount.');
-        });
-      }
-    };
-  }, [scannerRef]);
+    // On unmount, always release the camera/video element
+    return () => { void cleanupScanner(); };
+  }, []);
 
-  // Quick Scan handler for continuous scanning
+  // ---- quick scan flow -----------------------------------------------------
+
   const startQuickScan = async () => {
+    // prevent re-entrancy and double-inits
+    if (isStarting || scannerRef.current) return;
+
     setScanError(null);
     setQuickScanResult(null);
+    setIsStarting(true);
 
     try {
-      const scannerElement = document.getElementById('quick-scanner');
-      if (!scannerElement) {
-        throw new Error('Scanner container not found in the DOM.');
-      }
+      const containerId = 'quick-scanner';
+      const el = document.getElementById(containerId);
+      if (!el) throw new Error('Scanner container not found in the DOM.');
 
-      const html5QrCode = new Html5Qrcode('quick-scanner');
-      setScannerRef(html5QrCode);
+      // ensure no stale instance leftover
+      await cleanupScanner();
+
+      const html5QrCode = new Html5Qrcode(containerId);
+      scannerRef.current = html5QrCode;
 
       const cameras = await Html5Qrcode.getCameras();
-      if (!cameras?.length) {
-        throw new Error('No cameras found on this device.');
-      }
+      if (!cameras?.length) throw new Error('No cameras found on this device.');
 
-      const cameraId = cameras.find(cam => cam.label.toLowerCase().includes('back'))?.id || cameras[0].id;
+      const preferred = cameras.find(cam => /back|rear|environment/i.test(cam.label)) ?? cameras[0];
 
       await html5QrCode.start(
-        cameraId,
+        { deviceId: { exact: preferred.id } },
         { fps: 10, qrbox: { width: 250, height: 250 } },
+        // onSuccess
         async (decodedText) => {
-          // Continuous scanning: process result without stopping the camera
           try {
-            console.log(`Looking up part: ${decodedText} in store: ${selectedStore}`);
+            // Lookup in parts for the currently selected store
             const { data: partData, error: partError } = await supabase
               .from('parts')
               .select('*')
@@ -65,57 +78,52 @@ export const HomePage: React.FC = () => {
             if (partError) {
               setScanError(`Database error: ${partError.message}`);
               setQuickScanResult(null);
-            } else if (!partData) {
+              return;
+            }
+
+            if (!partData) {
               setScanError(`Part "${decodedText}" not found in store ${selectedStore}`);
               setQuickScanResult(null);
-            } else {
-              console.log('Part found:', partData);
-              setQuickScanResult(partData);
-              setScanError(null);
+              return;
             }
-          } catch (err: any) {
-            console.error('Error processing scan result:', err);
-            setScanError(err.message || 'Failed to process scan');
+
+            setQuickScanResult(partData);
+            setScanError(null);
+          } catch (e: any) {
+            setScanError(e?.message || 'Failed to process scan');
             setQuickScanResult(null);
           }
         },
+        // onFailure (frequent decode errors are normal)
         (errorMessage) => {
-          if (!errorMessage.includes('NotFoundException')) {
-            console.debug('Scanner error:', errorMessage);
+          if (!/NotFoundException/i.test(errorMessage)) {
+            console.debug('Scanner decode error:', errorMessage);
           }
         }
       );
     } catch (err: any) {
-      console.error('Quick scan setup error:', err);
-      setScanError(err.message || 'Failed to start scanner');
-      if (scannerRef && scannerRef.isScanning) {
-        await scannerRef.stop().catch(() => {});
-      }
-      setScannerRef(null);
+      setScanError(err?.message || 'Failed to start scanner');
+      await cleanupScanner();
       setIsQuickScanning(false);
+    } finally {
+      setIsStarting(false);
     }
   };
 
   const handleQuickScan = () => {
     setIsQuickScanning(true);
-    setTimeout(() => {
-      startQuickScan();
-    }, 100);
+    // allow modal to render before initializing
+    setTimeout(() => { void startQuickScan(); }, 100);
   };
 
   const closeQuickScan = async () => {
-    if (scannerRef && scannerRef.isScanning) {
-      try {
-        await scannerRef.stop();
-      } catch (err) {
-        console.log('Scanner already stopped or failed to stop.');
-      }
-    }
-    setScannerRef(null);
+    await cleanupScanner();
     setIsQuickScanning(false);
     setQuickScanResult(null);
     setScanError(null);
   };
+
+  // ---- UI ------------------------------------------------------------------
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col pb-16">
@@ -179,35 +187,27 @@ export const HomePage: React.FC = () => {
       {/* Quick Scan Modal */}
       {isQuickScanning && (
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
-          {/* 👇 MODIFIED THIS DIV 👇 */}
           <div className="bg-white rounded-lg max-w-md w-full p-6 flex flex-col">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-semibold">Quick Scan</h3>
-              <button
-                onClick={closeQuickScan}
-                className="text-gray-400 hover:text-gray-600"
-              >
+              <button onClick={closeQuickScan} className="text-gray-400 hover:text-gray-600">
                 <X className="h-6 w-6" />
               </button>
             </div>
 
-            {/* 👇 MODIFIED THIS DIV 👇 */}
             <div
               id="quick-scanner"
               className="w-full border-2 border-dashed border-gray-300 rounded-lg mb-4 bg-gray-50 overflow-hidden"
-              style={{ minHeight: '200px', maxHeight: '200px' }} // Constrain height
+              style={{ minHeight: '200px', maxHeight: '200px' }}
             />
 
-            {/* This container now holds the results and will not be overlapped */}
             <div className="flex-shrink-0">
-              {/* Error Display */}
               {scanError && (
                 <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
                   {scanError}
                 </div>
               )}
 
-              {/* Result Display */}
               {quickScanResult && (
                 <div className="mb-4 p-4 bg-green-100 border border-green-400 rounded">
                   <h4 className="font-semibold text-green-800">Part Found!</h4>
