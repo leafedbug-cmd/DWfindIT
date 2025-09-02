@@ -21,8 +21,8 @@ export interface UnifiedScanResult {
 }
 
 export const ScanPage: React.FC = () => {
-  const { selectedStore, isLoading: isStoreLoading } = useStore();
-  const { lists, fetchLists, currentList, setCurrentList } = useListStore();
+  const { selectedStore } = useStore();
+  const { lists, fetchLists, currentList, setCurrentList, isLoading: isListLoading } = useListStore();
   const { addItem, error: itemError, isLoading: isItemLoading } = useScanItemStore();
 
   const [scanError, setScanError] = useState<string | null>(null);
@@ -100,14 +100,14 @@ export const ScanPage: React.FC = () => {
       // Step 3: If nothing was found in either table, show an error
       throw new Error(`Item with barcode "${barcode}" not found in parts or equipment for store ${selectedStore}.`);
 
-    } catch (err: any) {
+    } catch (err) {
       console.error('Scan processing error:', err);
-      setScanError(err.message);
+      setScanError(err instanceof Error ? err.message : String(err));
     } finally {
       setIsProcessing(false);
     }
   }, [isProcessing, selectedStore]);
-  
+
   const handleSaveItem = async (updates: { quantity: number; notes: string }) => {
     if (!lastScannedItem || !currentList) {
       setScanError("Cannot save: Missing item or list info.");
@@ -136,12 +136,30 @@ export const ScanPage: React.FC = () => {
 
   const handleCameraError = useCallback((error: string) => { setCameraError(error); }, []);
   const barcodeScannerComponent = useMemo(() => (<BarcodeScanner onScanSuccess={handleScan} onScanError={handleCameraError} />), [handleScan, handleCameraError]);
-  
+
   const displayError = scanError || itemError;
   const displayLoading = isProcessing || isItemLoading;
 
   useEffect(() => { if (lists.length === 0) fetchLists(); }, [lists.length, fetchLists]);
-  useEffect(() => { if (lists.length > 0 && !currentList) { setCurrentList(lists[0]); } }, [lists, currentList, setCurrentList]);
+  useEffect(() => {
+    if (lists.length > 0 && !currentList && setCurrentList) {
+      setCurrentList(lists[0]);
+    }
+  }, [lists, currentList, setCurrentList]);
+
+  if (!currentList) {
+    return (
+      <div className="min-h-screen flex flex-col pb-16 bg-gray-50">
+        <Header title="Scan Item" showBackButton />
+        <main className="flex-1 p-4 flex items-center justify-center">
+          <p className="text-gray-500">
+            {isListLoading || lists.length === 0 ? 'Loading lists...' : 'No list available. Please create one first.'}
+          </p>
+        </main>
+        <BottomNav />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col pb-16 bg-gray-50">

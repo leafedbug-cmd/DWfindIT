@@ -22,15 +22,19 @@ interface ListState {
   lists: ListWithCount[]; // Use the new type
   isLoading: boolean;
   error: string | null;
+  currentList: ListWithCount | null;
   fetchLists: () => Promise<void>;
   createList: (name: string) => Promise<ListWithCount | null>;
   deleteList: (id: string) => Promise<void>;
+  setCurrentList: (list: ListWithCount | null) => void;
 }
 
 export const useListStore = create<ListState>((set) => ({
   lists: [],
   isLoading: false,
   error: null,
+  currentList: null,
+  setCurrentList: (list) => set({ currentList: list }),
 
   fetchLists: async () => {
     try {
@@ -57,7 +61,11 @@ export const useListStore = create<ListState>((set) => ({
         return { ...list, item_count } as ListWithCount;
       });
 
-      set({ lists, isLoading: false });
+      set((state) => ({
+        lists,
+        isLoading: false,
+        currentList: state.currentList || lists[0] || null,
+      }));
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       set({ error: message, isLoading: false });
