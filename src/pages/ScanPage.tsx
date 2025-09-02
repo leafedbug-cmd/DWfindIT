@@ -74,7 +74,7 @@ export const ScanPage: React.FC = () => {
       const { data: equipmentData, error: equipmentError } = await supabase
         .from('equipment')
         .select('*')
-        .eq('barcode', barcode) // Searching the 'barcode' column
+        .or(`barcode.eq.${barcode},stock_number.eq.${barcode}`) // Search by barcode or stock number
         .eq('store_location', selectedStore)
         .maybeSingle();
 
@@ -135,7 +135,8 @@ export const ScanPage: React.FC = () => {
   };
 
   const handleCameraError = useCallback((error: string) => { setCameraError(error); }, []);
-  const barcodeScannerComponent = useMemo(() => (<BarcodeScanner onScanSuccess={handleScan} onScanError={handleCameraError} />), [handleScan, handleCameraError]);
+  const barcodeScannerComponent = useMemo(() => (<BarcodeScanner onScanSuccess={handleScan} onScanError={handleCameraError} />),
+    [handleScan, handleCameraError]);
 
   const displayError = scanError || itemError;
   const displayLoading = isProcessing || isItemLoading;
