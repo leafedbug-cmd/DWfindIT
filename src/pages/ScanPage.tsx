@@ -1,5 +1,6 @@
 // src/pages/ScanPage.tsx
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { BarcodeScanner } from '../components/BarcodeScanner';
 import { ScanResult } from '../components/ScanResult';
 import { Header } from '../components/Header';
@@ -12,9 +13,9 @@ import { supabase } from '../services/supabase';
 // A unified type to handle results from either table
 export interface UnifiedScanResult {
   type: 'part' | 'equipment';
-  id: string; // Will be part.id or equipment.stock_number
-  primaryIdentifier: string; // Will hold part_number or stock_number
-  secondaryIdentifier: string; // Will hold bin_location or make/model
+  id: string; // part.id or equipment.stock_number
+  primaryIdentifier: string; // part_number or stock_number
+  secondaryIdentifier: string; // bin_location or make/model
   barcode: string;
   store_location: string;
   description?: string | null;
@@ -22,104 +23,111 @@ export interface UnifiedScanResult {
 
 export const ScanPage: React.FC = () => {
   const { selectedStore } = useStore();
+
+  // lists / items stores
   const { lists, fetchLists, currentList, setCurrentList, isLoading: isListLoading } = useListStore();
   const { addItem, error: itemError, isLoading: isItemLoading } = useScanItemStore();
+
+  // query param (?list=ID) support
+  const [params] = useSearchParams();
+  const preselectListId = params.get('list');
 
   const [scanError, setScanError] = useState<string | null>(null);
   const [scanSuccess, setScanSuccess] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  // This state now holds our new unified result type
   const [lastScannedItem, setLastScannedItem] = useState<UnifiedScanResult | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
 
-  // --- NEW, MODIFIED HANDLESCAN FUNCTION ---
-  const handleScan = useCallback(async (barcode: string) => {
-    if (isProcessing) return;
+  // --- Scan handler ---
+  const handleScan = useCallback(
+    async (barcode: string) => {
+      if (isProcessing) return;
 
-    setIsProcessing(true);
-    setScanError(null);
-    setScanSuccess(null);
-    setLastScannedItem(null);
+      setIsProcessing(true);
+      setScanError(null);
+      setScanSuccess(null);
+      setLastScannedItem(null);
 
-    try {
-      // Step 1: Search the 'parts' table first
-      // We assume the barcode IS the part number for parts
-      const { data: partData, error: partError } = await supabase
-        .from('parts')
-        .select('*')
-        .eq('part_number', barcode)
-        .eq('store_location', selectedStore)
-        .maybeSingle();
+      try {
+        // 1) Try parts
+        const { data: partData, error: partError } = await supabase
+          .from('parts')
+          .select('*')
+          .eq('part_number', barcode)
+          .eq('store_location', selectedStore)
+          .maybeSingle();
 
-      if (partError) throw partError; // Handle database errors
+        if (partError) throw partError;
 
-      if (partData) {
-        // --- Found a PART ---
-        console.log('Found in Parts:', partData);
-        setScanSuccess(`Part Found: ${partData.part_number}`);
-        // Normalize the data into our unified type
-        setLastScannedItem({
-          type: 'part',
-          id: partData.id,
-          primaryIdentifier: partData.part_number,
-          secondaryIdentifier: partData.bin_location,
-          barcode: barcode,
-          store_location: partData.store_location,
-          description: partData.description,
-        });
-        return; // Stop here since we found a match
+        if (partData) {
+          console.log('Found in Parts:', partData);
+          setScanSuccess(`Part Found: ${partData.part_number}`);
+          setLastScannedItem({
+            type: 'part',
+            id: partData.id,
+            primaryIdentifier: partData.part_number,
+            secondaryIdentifier: partData.bin_location,
+            barcode,
+            store_location: partData.store_location,
+            description: partData.description,
+          });
+          return;
+        }
+
+        // 2) Try equipment (barcode or stock_number)
+        const { data: equipmentData, error: equipmentError } = await supabase
+          .from('equipment')
+          .select('*')
+          .or(`barcode.eq.${barcode},stock_number.eq.${barcode}`)
+          .eq('store_location', selectedStore)
+          .maybeSingle();
+
+        if (equipmentError) throw equipmentError;
+
+        if (equipmentData) {
+          console.log('Found in Equipment:', equipmentData);
+          setScanSuccess(`Equipment Found: ${equipmentData.stock_number}`);
+          setLastScannedItem({
+            type: 'equipment',
+            id: equipmentData.stock_number,
+            primaryIdentifier: equipmentData.stock_number,
+            secondaryIdentifier: `${equipmentData.make || ''} ${equipmentData.model || ''}`.trim(),
+            barcode,
+            store_location: equipmentData.store_location,
+            description: equipmentData.description,
+          });
+          return;
+        }
+
+        // 3) Not found
+        throw new Error(`Item with barcode "${barcode}" not found in parts or equipment for store ${selectedStore}.`);
+      } catch (err) {
+        console.error('Scan processing error:', err);
+        setScanError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setIsProcessing(false);
       }
+    },
+    [isProcessing, selectedStore]
+  );
 
-      // Step 2: If no part was found, search the 'equipment' table
-      const { data: equipmentData, error: equipmentError } = await supabase
-        .from('equipment')
-        .select('*')
-        .or(`barcode.eq.${barcode},stock_number.eq.${barcode}`) // Search by barcode or stock number
-        .eq('store_location', selectedStore)
-        .maybeSingle();
-
-      if (equipmentError) throw equipmentError;
-
-      if (equipmentData) {
-        // --- Found EQUIPMENT ---
-        console.log('Found in Equipment:', equipmentData);
-        setScanSuccess(`Equipment Found: ${equipmentData.stock_number}`);
-        // Normalize the data into our unified type
-        setLastScannedItem({
-          type: 'equipment',
-          id: equipmentData.stock_number, // Using stock_number as the unique ID
-          primaryIdentifier: equipmentData.stock_number,
-          secondaryIdentifier: `${equipmentData.make || ''} ${equipmentData.model || ''}`.trim(),
-          barcode: barcode,
-          store_location: equipmentData.store_location,
-          description: equipmentData.description,
-        });
-        return; // Stop here
-      }
-
-      // Step 3: If nothing was found in either table, show an error
-      throw new Error(`Item with barcode "${barcode}" not found in parts or equipment for store ${selectedStore}.`);
-
-    } catch (err) {
-      console.error('Scan processing error:', err);
-      setScanError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setIsProcessing(false);
-    }
-  }, [isProcessing, selectedStore]);
-
+  // Save handler — now shows the LIST NAME in the success message
   const handleSaveItem = async (updates: { quantity: number; notes: string }) => {
-    if (!lastScannedItem || !currentList) {
-      setScanError("Cannot save: Missing item or list info.");
+    if (!lastScannedItem || (!currentList && !preselectListId)) {
+      setScanError('Cannot save: Missing item or list info.');
       return;
     }
 
-    // Now we build the object to save based on the type of item scanned
+    const targetListId = preselectListId ?? currentList!.id;
+    const targetList =
+      (preselectListId ? lists.find((l) => l.id === preselectListId) : currentList) ?? null;
+    const targetListName = targetList?.name ?? `List ${targetListId}`;
+
     const newItemData = {
-      list_id: currentList.id,
+      list_id: targetListId,
       barcode: lastScannedItem.barcode,
-      part_number: lastScannedItem.primaryIdentifier, // Use part_number or stock_number
-      bin_location: lastScannedItem.type === 'part' ? lastScannedItem.secondaryIdentifier : 'N/A', // Equipment might not have a bin
+      part_number: lastScannedItem.primaryIdentifier,
+      bin_location: lastScannedItem.type === 'part' ? lastScannedItem.secondaryIdentifier : 'N/A',
       store_location: lastScannedItem.store_location,
       quantity: updates.quantity,
       notes: updates.notes,
@@ -128,25 +136,42 @@ export const ScanPage: React.FC = () => {
     const addedItem = await addItem(newItemData);
 
     if (addedItem) {
-      setScanSuccess(`Added ${updates.quantity} "${newItemData.part_number}" To List ✅`);
+      setScanSuccess(
+        `Added ${updates.quantity} "${newItemData.part_number}" to "${targetListName}" ✅`
+      );
       setLastScannedItem(null);
       setTimeout(() => setScanSuccess(null), 3000);
     }
   };
 
-  const handleCameraError = useCallback((error: string) => { setCameraError(error); }, []);
-  const barcodeScannerComponent = useMemo(() => (<BarcodeScanner onScanSuccess={handleScan} onScanError={handleCameraError} />),
-    [handleScan, handleCameraError]);
+  const handleCameraError = useCallback((error: string) => setCameraError(error), []);
+  const barcodeScannerComponent = useMemo(
+    () => <BarcodeScanner onScanSuccess={handleScan} onScanError={handleCameraError} />,
+    [handleScan, handleCameraError]
+  );
 
   const displayError = scanError || itemError;
   const displayLoading = isProcessing || isItemLoading;
 
-  useEffect(() => { if (lists.length === 0) fetchLists(); }, [lists.length, fetchLists]);
+  // ensure lists loaded
   useEffect(() => {
-    if (lists.length > 0 && !currentList && setCurrentList) {
-      setCurrentList(lists[0]);
+    if (lists.length === 0) fetchLists();
+  }, [lists.length, fetchLists]);
+
+  // prefer ?list=... when selecting current list
+  useEffect(() => {
+    if (lists.length === 0) return;
+
+    if (preselectListId) {
+      const match = lists.find((l) => l.id === preselectListId);
+      if (match && (!currentList || currentList.id !== match.id)) {
+        setCurrentList?.(match);
+        return;
+      }
     }
-  }, [lists, currentList, setCurrentList]);
+
+    if (!currentList) setCurrentList?.(lists[0]);
+  }, [lists, currentList, setCurrentList, preselectListId]);
 
   if (!currentList) {
     return (
@@ -166,17 +191,35 @@ export const ScanPage: React.FC = () => {
     <div className="min-h-screen flex flex-col pb-16 bg-gray-50">
       <Header title="Scan Item" showBackButton />
       <main className="flex-1 p-4 space-y-4">
-        {barcodeScannerComponent}
-        <div className="space-y-2">
-          {cameraError && <p className="p-3 text-center text-sm bg-yellow-100 text-yellow-800 rounded-lg">Camera Error: {cameraError}</p>}
-          {displayError && <p className="p-3 text-center text-sm bg-red-100 text-red-800 rounded-lg">{displayError}</p>}
-          {scanSuccess && <p className="p-3 text-center text-sm bg-green-100 text-green-800 rounded-lg">{scanSuccess}</p>}
+        {/* hint: which list we’ll save to */}
+        <div className="text-xs bg-zinc-100 text-zinc-700 px-2 py-1 rounded w-fit">
+          Saving to: <span className="font-medium">{currentList.name}</span>
         </div>
+
+        {barcodeScannerComponent}
+
+        <div className="space-y-2">
+          {cameraError && (
+            <p className="p-3 text-center text-sm bg-yellow-100 text-yellow-800 rounded-lg">
+              Camera Error: {cameraError}
+            </p>
+          )}
+          {displayError && (
+            <p className="p-3 text-center text-sm bg-red-100 text-red-800 rounded-lg">{displayError}</p>
+          )}
+          {scanSuccess && (
+            <p className="p-3 text-center text-sm bg-green-100 text-green-800 rounded-lg">{scanSuccess}</p>
+          )}
+        </div>
+
         <ScanResult
-          item={lastScannedItem} // Pass the unified item object
+          item={lastScannedItem}
           isLoading={displayLoading}
           onSave={handleSaveItem}
-          onClear={() => { setLastScannedItem(null); setScanError(null); }}
+          onClear={() => {
+            setLastScannedItem(null);
+            setScanError(null);
+          }}
         />
       </main>
       <BottomNav />

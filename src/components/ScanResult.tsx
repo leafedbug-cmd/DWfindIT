@@ -1,7 +1,7 @@
 // src/components/ScanResult.tsx
 import React, { useState, useEffect } from 'react';
-import { UnifiedScanResult } from '../pages/ScanPage'; // Import the new type
-import { Tag, Package, Hash, Pencil, Save, X } from 'lucide-react';
+import { UnifiedScanResult } from '../pages/ScanPage';
+import { Tag, Package, Hash, Pencil, Save, X, Minus, Plus } from 'lucide-react';
 
 interface ScanResultProps {
   item: UnifiedScanResult | null;
@@ -11,12 +11,15 @@ interface ScanResultProps {
 }
 
 export const ScanResult: React.FC<ScanResultProps> = ({ item, isLoading, onSave, onClear }) => {
-  const [quantity, setQuantity] = useState(1);
+  // Keep a numeric value AND a text value so users can backspace/clear freely.
+  const [quantity, setQuantity] = useState<number>(1);
+  const [qtyText, setQtyText] = useState<string>('1');
   const [notes, setNotes] = useState('');
 
   useEffect(() => {
     // Reset form when a new item is scanned
     setQuantity(1);
+    setQtyText('1');
     setNotes('');
   }, [item]);
 
@@ -36,6 +39,25 @@ export const ScanResult: React.FC<ScanResultProps> = ({ item, isLoading, onSave,
     );
   }
 
+  const commitQty = (textVal: string) => {
+    // Convert text to a valid number (min 1). Default to 1 if empty/invalid.
+    const n = textVal === '' ? 1 : Math.max(1, parseInt(textVal, 10) || 1);
+    setQuantity(n);
+    setQtyText(String(n));
+  };
+
+  const decrement = () => {
+    const next = Math.max(1, quantity - 1);
+    setQuantity(next);
+    setQtyText(String(next));
+  };
+
+  const increment = () => {
+    const next = quantity + 1;
+    setQuantity(next);
+    setQtyText(String(next));
+  };
+
   const handleSave = () => {
     onSave({ quantity, notes });
   };
@@ -43,9 +65,11 @@ export const ScanResult: React.FC<ScanResultProps> = ({ item, isLoading, onSave,
   return (
     <div className="bg-white p-4 rounded-lg shadow-sm border space-y-4">
       {/* Item Type Indicator */}
-      <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-        item.type === 'part' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'
-      }`}>
+      <div
+        className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+          item.type === 'part' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'
+        }`}
+      >
         {item.type === 'part' ? <Package className="h-4 w-4 mr-2" /> : <Tag className="h-4 w-4 mr-2" />}
         {item.type === 'part' ? 'Part' : 'Equipment'}
       </div>
@@ -66,21 +90,56 @@ export const ScanResult: React.FC<ScanResultProps> = ({ item, isLoading, onSave,
         </div>
       )}
 
-      {/* Quantity Input */}
-      <div className="flex items-center space-x-2">
+      {/* Quantity Input with 10-key keypad + clear/backspace support */}
+      <div className="flex items-center gap-2">
         <Hash className="h-5 w-5 text-gray-400" />
-        <label htmlFor="quantity" className="font-medium text-gray-700">Quantity</label>
+        <label htmlFor="quantity" className="font-medium text-gray-700">
+          Quantity
+        </label>
+
+        <button
+          type="button"
+          onClick={decrement}
+          className="px-3 py-2 rounded-md border text-gray-700 hover:bg-gray-50"
+          aria-label="Decrease quantity"
+        >
+          <Minus className="h-4 w-4" />
+        </button>
+
         <input
-          type="number"
           id="quantity"
-          value={quantity}
-          onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value, 10) || 1))}
+          type="text"           // allows backspace/empty state
+          inputMode="numeric"   // mobile shows 10-key keypad
+          pattern="[0-9]*"      // iOS hint for numeric
           className="w-20 p-2 border rounded-md text-center"
+          value={qtyText}
+          onChange={(e) => {
+            // keep only digits
+            const digits = e.target.value.replace(/\D/g, '');
+            setQtyText(digits);
+          }}
+          onBlur={() => commitQty(qtyText)}
+          onKeyDown={(e) => {
+            // Enter commits immediately
+            if (e.key === 'Enter') {
+              e.currentTarget.blur();
+            }
+          }}
+          placeholder="1"
         />
+
+        <button
+          type="button"
+          onClick={increment}
+          className="px-3 py-2 rounded-md border text-gray-700 hover:bg-gray-50"
+          aria-label="Increase quantity"
+        >
+          <Plus className="h-4 w-4" />
+        </button>
       </div>
 
       {/* Notes Input */}
-      <div className="flex items-start space-x-2">
+      <div className="flex items-start gap-2">
         <Pencil className="h-5 w-5 text-gray-400 mt-2" />
         <textarea
           placeholder="Add notes..."
@@ -92,12 +151,25 @@ export const ScanResult: React.FC<ScanResultProps> = ({ item, isLoading, onSave,
       </div>
 
       {/* Action Buttons */}
-      <div className="flex space-x-2">
-        <button onClick={onClear} className="flex-1 flex items-center justify-center p-3 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300">
+      <div className="flex gap-2">
+        <button
+          onClick={onClear}
+          className="flex-1 flex items-center justify-center p-3 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300"
+          type="button"
+        >
           <X className="h-5 w-5 mr-2" /> Clear
         </button>
-        <button onClick={handleSave} className="flex-1 flex items-center justify-center p-3 bg-orange-600 text-white rounded-lg font-semibold hover:bg-orange-700 disabled:bg-gray-400" disabled={isLoading}>
-          {isLoading ? 'Saving...' : <><Save className="h-5 w-5 mr-2" /> Save to List</>}
+        <button
+          onClick={handleSave}
+          className="flex-1 flex items-center justify-center p-3 bg-orange-600 text-white rounded-lg font-semibold hover:bg-orange-700 disabled:bg-gray-400"
+          disabled={isLoading}
+          type="button"
+        >
+          {isLoading ? 'Saving...' : (
+            <>
+              <Save className="h-5 w-5 mr-2" /> Save to List
+            </>
+          )}
         </button>
       </div>
     </div>
