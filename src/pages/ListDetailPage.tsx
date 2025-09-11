@@ -41,27 +41,19 @@ export const ListDetailPage: React.FC = () => {
     if (currentList) generatePDF(currentList, items ?? []);
   };
 
+  const goToScanAuto = () => {
+    if (!listId) return;
+    // auto=1 tells Scan page to auto-start the camera
+    navigate(`/scan?list=${encodeURIComponent(listId)}&auto=1`);
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col pb-16">
-      <Header
-        title={currentList?.name || 'List Details'}
-        showBackButton
-        /* NEW: top-right Add button */
-        right={
-          listId ? (
-            <button
-              className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-orange-600 text-white"
-              onClick={() => navigate(`/scan?list=${listId}`)}
-            >
-              <Plus size={18} /> Add items
-            </button>
-          ) : null
-        }
-      />
+      <Header title={currentList?.name || 'List Details'} showBackButton />
 
       <main className="flex-1 p-4 space-y-4">
-        {/* Action Buttons */}
-        <div className="grid grid-cols-2 gap-2">
+        {/* Toolbar */}
+        <div className="grid grid-cols-3 gap-2">
           <button
             onClick={handleExportCSV}
             className="text-sm bg-blue-500 text-white px-4 py-2 rounded-lg shadow-sm"
@@ -73,6 +65,14 @@ export const ListDetailPage: React.FC = () => {
             className="text-sm bg-red-500 text-white px-4 py-2 rounded-lg shadow-sm"
           >
             Export PDF
+          </button>
+          <button
+            onClick={goToScanAuto}
+            disabled={!listId}
+            className="text-sm bg-orange-600 text-white px-4 py-2 rounded-lg shadow-sm flex items-center justify-center disabled:opacity-60"
+          >
+            <Plus className="h-5 w-5 mr-2" />
+            Add Items
           </button>
         </div>
 
@@ -104,8 +104,9 @@ export const ListDetailPage: React.FC = () => {
             <div className="p-6 text-center">
               <p className="text-gray-500">This list is empty.</p>
               <button
-                onClick={() => navigate(`/scan?list=${listId}`)} // pass list id here too
-                className="mt-4 bg-orange-600 text-white px-4 py-2 rounded-lg shadow-sm flex items-center mx-auto"
+                onClick={goToScanAuto}
+                disabled={!listId}
+                className="mt-4 bg-orange-600 text-white px-4 py-2 rounded-lg shadow-sm flex items-center mx-auto disabled:opacity-60"
               >
                 <Plus className="h-5 w-5 mr-2" />
                 Add Items
