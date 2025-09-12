@@ -10,15 +10,27 @@ import { useScanItemStore } from '../store/scanItemStore';
 import { useStore } from '../contexts/StoreContext';
 import { supabase } from '../services/supabase';
 
-// A unified type to handle results from either table
+// Unified result type for parts & equipment
 export interface UnifiedScanResult {
   type: 'part' | 'equipment';
-  id: string; // part.id or equipment.stock_number
-  primaryIdentifier: string; // part_number or stock_number
-  secondaryIdentifier: string; // bin_location or make/model
+  id: string;                       // part.id or equipment.stock_number
+  primaryIdentifier: string;        // part_number or stock_number
+  secondaryIdentifier: string;      // bin_location or make/model
   barcode: string;
   store_location: string;
   description?: string | null;
+
+  // NEW: detailed equipment fields (optional; shown only if present)
+  equipmentDetails?: {
+    customer_name?: string | null;
+    model?: string | null;
+    make?: string | null;
+    serial_number?: string | null;
+    invoice_number?: string | null;
+    branch?: string | null;                 // branch column, or derived from store_location
+    model_year?: string | number | null;
+    internal_unit_y_or_n?: string | boolean | null;
+  };
 }
 
 export const ScanPage: React.FC = () => {
@@ -28,9 +40,10 @@ export const ScanPage: React.FC = () => {
   const { lists, fetchLists, currentList, setCurrentList, isLoading: isListLoading } = useListStore();
   const { addItem, error: itemError, isLoading: isItemLoading } = useScanItemStore();
 
-  // query param (?list=ID) support
+  // query params
   const [params] = useSearchParams();
   const preselectListId = params.get('list');
+  const autoStart = params.get('auto') === '1'; // auto-open camera from "Add Items"
 
   const [scanError, setScanError] = useState<string | null>(null);
   const [scanSuccess, setScanSuccess] = useState<string | null>(null);
@@ -49,7 +62,7 @@ export const ScanPage: React.FC = () => {
       setLastScannedItem(null);
 
       try {
-        // 1) Try parts
+        // 1) Try parts (scoped to store)
         const { data: partData, error: partError } = await supabase
           .from('parts')
           .select('*')
@@ -60,7 +73,6 @@ export const ScanPage: React.FC = () => {
         if (partError) throw partError;
 
         if (partData) {
-          console.log('Found in Parts:', partData);
           setScanSuccess(`Part Found: ${partData.part_number}`);
           setLastScannedItem({
             type: 'part',
@@ -74,18 +86,16 @@ export const ScanPage: React.FC = () => {
           return;
         }
 
-        // 2) Try equipment (barcode or stock_number)
+        // 2) Try equipment (NOT limited by store) — barcode stores stock_number
         const { data: equipmentData, error: equipmentError } = await supabase
           .from('equipment')
           .select('*')
           .or(`barcode.eq.${barcode},stock_number.eq.${barcode}`)
-          .eq('store_location', selectedStore)
-          .maybeSingle();
+          .maybeSingle(); // no store filter
 
         if (equipmentError) throw equipmentError;
 
         if (equipmentData) {
-          console.log('Found in Equipment:', equipmentData);
           setScanSuccess(`Equipment Found: ${equipmentData.stock_number}`);
           setLastScannedItem({
             type: 'equipment',
@@ -93,14 +103,26 @@ export const ScanPage: React.FC = () => {
             primaryIdentifier: equipmentData.stock_number,
             secondaryIdentifier: `${equipmentData.make || ''} ${equipmentData.model || ''}`.trim(),
             barcode,
-            store_location: equipmentData.store_location,
+            store_location: equipmentData.store_location ?? equipmentData.branch ?? 'N/A',
             description: equipmentData.description,
+            equipmentDetails: {
+              customer_name: equipmentData.customer_name ?? null,
+              model: equipmentData.model ?? null,
+              make: equipmentData.make ?? null,
+              serial_number: equipmentData.serial_number ?? null,
+              invoice_number: equipmentData.invoice_number ?? null,
+              branch: (equipmentData.branch ?? equipmentData.store_location) ?? null,
+              model_year: equipmentData.model_year ?? null,
+              internal_unit_y_or_n: equipmentData.internal_unit_y_or_n ?? null,
+            },
           });
           return;
         }
 
         // 3) Not found
-        throw new Error(`Item with barcode "${barcode}" not found in parts or equipment for store ${selectedStore}.`);
+        throw new Error(
+          `Item with barcode "${barcode}" not found in parts (store ${selectedStore}) or equipment (all stores).`
+        );
       } catch (err) {
         console.error('Scan processing error:', err);
         setScanError(err instanceof Error ? err.message : String(err));
@@ -111,7 +133,7 @@ export const ScanPage: React.FC = () => {
     [isProcessing, selectedStore]
   );
 
-  // Save handler — now shows the LIST NAME in the success message
+  // Save handler — shows LIST NAME in the success message
   const handleSaveItem = async (updates: { quantity: number; notes: string }) => {
     if (!lastScannedItem || (!currentList && !preselectListId)) {
       setScanError('Cannot save: Missing item or list info.');
@@ -126,11 +148,13 @@ export const ScanPage: React.FC = () => {
     const newItemData = {
       list_id: targetListId,
       barcode: lastScannedItem.barcode,
-      part_number: lastScannedItem.primaryIdentifier,
+      part_number: lastScannedItem.primaryIdentifier, // stock_number for equipment
       bin_location: lastScannedItem.type === 'part' ? lastScannedItem.secondaryIdentifier : 'N/A',
-      store_location: lastScannedItem.store_location,
+      store_location: lastScannedItem.store_location ?? 'N/A',
       quantity: updates.quantity,
       notes: updates.notes,
+      // If you later add a column to distinguish types:
+      // item_type: lastScannedItem.type,
     };
 
     const addedItem = await addItem(newItemData);
@@ -146,8 +170,14 @@ export const ScanPage: React.FC = () => {
 
   const handleCameraError = useCallback((error: string) => setCameraError(error), []);
   const barcodeScannerComponent = useMemo(
-    () => <BarcodeScanner onScanSuccess={handleScan} onScanError={handleCameraError} />,
-    [handleScan, handleCameraError]
+    () => (
+      <BarcodeScanner
+        autoStart={autoStart}            // auto-open from Add Items
+        onScanSuccess={handleScan}
+        onScanError={handleCameraError}
+      />
+    ),
+    [handleScan, handleCameraError, autoStart]
   );
 
   const displayError = scanError || itemError;
@@ -179,7 +209,9 @@ export const ScanPage: React.FC = () => {
         <Header title="Scan Item" showBackButton />
         <main className="flex-1 p-4 flex items-center justify-center">
           <p className="text-gray-500">
-            {isListLoading || lists.length === 0 ? 'Loading lists...' : 'No list available. Please create one first.'}
+            {isListLoading || lists.length === 0
+              ? 'Loading lists...'
+              : 'No list available. Please create one first.'}
           </p>
         </main>
         <BottomNav />
@@ -208,7 +240,9 @@ export const ScanPage: React.FC = () => {
             <p className="p-3 text-center text-sm bg-red-100 text-red-800 rounded-lg">{displayError}</p>
           )}
           {scanSuccess && (
-            <p className="p-3 text-center text-sm bg-green-100 text-green-800 rounded-lg">{scanSuccess}</p>
+            <p className="p-3 text-center text-sm bg-green-100 text-green-800 rounded-lg">
+              {scanSuccess}
+            </p>
           )}
         </div>
 

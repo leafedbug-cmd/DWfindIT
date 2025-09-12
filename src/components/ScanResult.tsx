@@ -10,6 +10,28 @@ interface ScanResultProps {
   onClear: () => void;
 }
 
+// tiny helper: render a label/value row only if value exists
+function FieldRow({ label, value }: { label: string; value?: string | number | boolean | null }) {
+  if (value === undefined || value === null || value === '' || value === 'N/A') return null;
+  return (
+    <div className="flex items-start justify-between text-sm">
+      <span className="text-gray-500">{label}</span>
+      <span className="ml-4 font-medium text-gray-800 text-right">{String(value)}</span>
+    </div>
+  );
+}
+
+function formatInternal(v: string | boolean | null | undefined) {
+  if (typeof v === 'boolean') return v ? 'Yes' : 'No';
+  if (typeof v === 'string') {
+    const s = v.trim().toLowerCase();
+    if (s === 'y' || s === 'yes' || s === 'true') return 'Yes';
+    if (s === 'n' || s === 'no' || s === 'false') return 'No';
+    return v;
+  }
+  return v ?? undefined;
+}
+
 export const ScanResult: React.FC<ScanResultProps> = ({ item, isLoading, onSave, onClear }) => {
   // Keep a numeric value AND a text value so users can backspace/clear freely.
   const [quantity, setQuantity] = useState<number>(1);
@@ -40,7 +62,6 @@ export const ScanResult: React.FC<ScanResultProps> = ({ item, isLoading, onSave,
   }
 
   const commitQty = (textVal: string) => {
-    // Convert text to a valid number (min 1). Default to 1 if empty/invalid.
     const n = textVal === '' ? 1 : Math.max(1, parseInt(textVal, 10) || 1);
     setQuantity(n);
     setQtyText(String(n));
@@ -58,9 +79,9 @@ export const ScanResult: React.FC<ScanResultProps> = ({ item, isLoading, onSave,
     setQtyText(String(next));
   };
 
-  const handleSave = () => {
-    onSave({ quantity, notes });
-  };
+  const handleSave = () => onSave({ quantity, notes });
+
+  const eq = item.type === 'equipment' ? item.equipmentDetails ?? {} : {};
 
   return (
     <div className="bg-white p-4 rounded-lg shadow-sm border space-y-4">
@@ -74,7 +95,7 @@ export const ScanResult: React.FC<ScanResultProps> = ({ item, isLoading, onSave,
         {item.type === 'part' ? 'Part' : 'Equipment'}
       </div>
 
-      {/* Item Details */}
+      {/* Core identifiers */}
       <div>
         <p className="text-sm text-gray-500">{item.type === 'part' ? 'Part Number' : 'Stock Number'}</p>
         <p className="text-xl font-bold text-gray-900">{item.primaryIdentifier}</p>
@@ -87,6 +108,20 @@ export const ScanResult: React.FC<ScanResultProps> = ({ item, isLoading, onSave,
         <div>
           <p className="text-sm text-gray-500">Description</p>
           <p className="text-base text-gray-700">{item.description}</p>
+        </div>
+      )}
+
+      {/* Equipment-only extra fields (shown only if present) */}
+      {item.type === 'equipment' && (
+        <div className="rounded-lg border bg-gray-50 p-3 space-y-1">
+          <FieldRow label="Customer" value={eq.customer_name} />
+          <FieldRow label="Model" value={eq.model} />
+          <FieldRow label="Make" value={eq.make} />
+          <FieldRow label="Serial #" value={eq.serial_number} />
+          <FieldRow label="Invoice #" value={eq.invoice_number} />
+          <FieldRow label="Branch" value={eq.branch} />
+          <FieldRow label="Model Year" value={eq.model_year as any} />
+          <FieldRow label="Internal Unit" value={formatInternal(eq.internal_unit_y_or_n)} />
         </div>
       )}
 
@@ -114,16 +149,12 @@ export const ScanResult: React.FC<ScanResultProps> = ({ item, isLoading, onSave,
           className="w-20 p-2 border rounded-md text-center"
           value={qtyText}
           onChange={(e) => {
-            // keep only digits
             const digits = e.target.value.replace(/\D/g, '');
             setQtyText(digits);
           }}
           onBlur={() => commitQty(qtyText)}
           onKeyDown={(e) => {
-            // Enter commits immediately
-            if (e.key === 'Enter') {
-              e.currentTarget.blur();
-            }
+            if (e.key === 'Enter') e.currentTarget.blur();
           }}
           placeholder="1"
         />
