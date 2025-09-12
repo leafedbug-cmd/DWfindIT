@@ -20,14 +20,14 @@ export interface UnifiedScanResult {
   store_location: string;
   description?: string | null;
 
-  // NEW: detailed equipment fields (optional; shown only if present)
+  // detailed equipment fields (optional; shown only if present)
   equipmentDetails?: {
     customer_name?: string | null;
     model?: string | null;
     make?: string | null;
     serial_number?: string | null;
     invoice_number?: string | null;
-    branch?: string | null;                 // branch column, or derived from store_location
+    branch?: string | null;
     model_year?: string | number | null;
     internal_unit_y_or_n?: string | boolean | null;
   };
@@ -43,7 +43,7 @@ export const ScanPage: React.FC = () => {
   // query params
   const [params] = useSearchParams();
   const preselectListId = params.get('list');
-  const autoStart = params.get('auto') === '1'; // auto-open camera from "Add Items"
+  const autoStart = params.get('auto') === '1';
 
   const [scanError, setScanError] = useState<string | null>(null);
   const [scanSuccess, setScanSuccess] = useState<string | null>(null);
@@ -86,12 +86,13 @@ export const ScanPage: React.FC = () => {
           return;
         }
 
-        // 2) Try equipment (NOT limited by store) — barcode stores stock_number
+        // 2) Try equipment (NOT limited by store)
+        // IMPORTANT: your barcode encodes the STOCK NUMBER. There is no "barcode" column.
         const { data: equipmentData, error: equipmentError } = await supabase
           .from('equipment')
           .select('*')
-          .or(`barcode.eq.${barcode},stock_number.eq.${barcode}`)
-          .maybeSingle(); // no store filter
+          .eq('stock_number', barcode)   // <— changed: only query stock_number
+          .maybeSingle();
 
         if (equipmentError) throw equipmentError;
 
@@ -153,8 +154,7 @@ export const ScanPage: React.FC = () => {
       store_location: lastScannedItem.store_location ?? 'N/A',
       quantity: updates.quantity,
       notes: updates.notes,
-      // If you later add a column to distinguish types:
-      // item_type: lastScannedItem.type,
+      // item_type: lastScannedItem.type, // if you later add a column for this
     };
 
     const addedItem = await addItem(newItemData);
@@ -172,7 +172,7 @@ export const ScanPage: React.FC = () => {
   const barcodeScannerComponent = useMemo(
     () => (
       <BarcodeScanner
-        autoStart={autoStart}            // auto-open from Add Items
+        autoStart={autoStart}
         onScanSuccess={handleScan}
         onScanError={handleCameraError}
       />
@@ -260,3 +260,4 @@ export const ScanPage: React.FC = () => {
     </div>
   );
 };
+
