@@ -87,21 +87,23 @@ export const ScanPage: React.FC = () => {
         }
 
         // 2) Try equipment (NOT limited by store)
-        // IMPORTANT: your barcode encodes the STOCK NUMBER. There is no "barcode" column.
+        // Match either CDK label (stock_number) OR factory label (serial_number)
         const { data: equipmentData, error: equipmentError } = await supabase
           .from('equipment')
           .select('*')
-          .eq('stock_number', barcode)   // <— changed: only query stock_number
+          .or(`stock_number.eq.${barcode},serial_number.eq.${barcode}`)
           .maybeSingle();
 
         if (equipmentError) throw equipmentError;
 
         if (equipmentData) {
-          setScanSuccess(`Equipment Found: ${equipmentData.stock_number}`);
+          setScanSuccess(
+            `Equipment Found: ${equipmentData.stock_number}${equipmentData.serial_number ? ` (SN: ${equipmentData.serial_number})` : ''}`
+          );
           setLastScannedItem({
             type: 'equipment',
             id: equipmentData.stock_number,
-            primaryIdentifier: equipmentData.stock_number,
+            primaryIdentifier: equipmentData.stock_number, // always show stock #
             secondaryIdentifier: `${equipmentData.make || ''} ${equipmentData.model || ''}`.trim(),
             barcode,
             store_location: equipmentData.store_location ?? equipmentData.branch ?? 'N/A',
@@ -122,7 +124,7 @@ export const ScanPage: React.FC = () => {
 
         // 3) Not found
         throw new Error(
-          `Item with barcode "${barcode}" not found in parts (store ${selectedStore}) or equipment (all stores).`
+          `Item with barcode "${barcode}" not found in parts (store ${selectedStore}) or equipment (by stock # or serial #).`
         );
       } catch (err) {
         console.error('Scan processing error:', err);
@@ -154,7 +156,7 @@ export const ScanPage: React.FC = () => {
       store_location: lastScannedItem.store_location ?? 'N/A',
       quantity: updates.quantity,
       notes: updates.notes,
-      // item_type: lastScannedItem.type, // if you later add a column for this
+      // item_type: lastScannedItem.type, // if you add this column later
     };
 
     const addedItem = await addItem(newItemData);
