@@ -1,6 +1,6 @@
 // src/pages/ScanPage.tsx
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { BarcodeScanner } from '../components/BarcodeScanner';
 import { ScanResult } from '../components/ScanResult';
 import { Header } from '../components/Header';
@@ -19,8 +19,6 @@ export interface UnifiedScanResult {
   barcode: string;
   store_location: string;
   description?: string | null;
-
-  // detailed equipment fields (optional; shown only if present)
   equipmentDetails?: {
     customer_name?: string | null;
     model?: string | null;
@@ -35,9 +33,9 @@ export interface UnifiedScanResult {
 
 export const ScanPage: React.FC = () => {
   const { selectedStore } = useStore();
+  const navigate = useNavigate();
 
-  // lists / items stores
-  const { lists, fetchLists, currentList, setCurrentList, isLoading: isListLoading } = useListStore();
+  const { lists, fetchLists, currentList, setCurrentList } = useListStore();
   const { addItem, error: itemError, isLoading: isItemLoading } = useScanItemStore();
 
   // query params
@@ -86,8 +84,7 @@ export const ScanPage: React.FC = () => {
           return;
         }
 
-        // 2) Try equipment (NOT limited by store)
-        // Match either CDK label (stock_number) OR factory label (serial_number)
+        // 2) Try equipment (NOT limited by store) — match by stock OR serial
         const { data: equipmentData, error: equipmentError } = await supabase
           .from('equipment')
           .select('*')
@@ -103,7 +100,7 @@ export const ScanPage: React.FC = () => {
           setLastScannedItem({
             type: 'equipment',
             id: equipmentData.stock_number,
-            primaryIdentifier: equipmentData.stock_number, // always show stock #
+            primaryIdentifier: equipmentData.stock_number, // display stock #
             secondaryIdentifier: `${equipmentData.make || ''} ${equipmentData.model || ''}`.trim(),
             barcode,
             store_location: equipmentData.store_location ?? equipmentData.branch ?? 'N/A',
@@ -124,7 +121,7 @@ export const ScanPage: React.FC = () => {
 
         // 3) Not found
         throw new Error(
-          `Item with barcode "${barcode}" not found in parts (store ${selectedStore}) or equipment (by stock # or serial #).`
+          `Item "${barcode}" not found in parts (store ${selectedStore}) or equipment (by stock # or serial #).`
         );
       } catch (err) {
         console.error('Scan processing error:', err);
@@ -136,10 +133,14 @@ export const ScanPage: React.FC = () => {
     [isProcessing, selectedStore]
   );
 
-  // Save handler — shows LIST NAME in the success message
+  // Save handler — if no list, show friendly message and do nothing
   const handleSaveItem = async (updates: { quantity: number; notes: string }) => {
-    if (!lastScannedItem || (!currentList && !preselectListId)) {
-      setScanError('Cannot save: Missing item or list info.');
+    if (!lastScannedItem) {
+      setScanError('Nothing to save yet — scan an item first.');
+      return;
+    }
+    if (!currentList && !preselectListId) {
+      setScanError('No list selected. Create or choose a list to save items.');
       return;
     }
 
@@ -156,7 +157,6 @@ export const ScanPage: React.FC = () => {
       store_location: lastScannedItem.store_location ?? 'N/A',
       quantity: updates.quantity,
       notes: updates.notes,
-      // item_type: lastScannedItem.type, // if you add this column later
     };
 
     const addedItem = await addItem(newItemData);
@@ -202,33 +202,27 @@ export const ScanPage: React.FC = () => {
       }
     }
 
-    if (!currentList) setCurrentList?.(lists[0]);
+    // don't auto-pick first list here; users can scan without one
   }, [lists, currentList, setCurrentList, preselectListId]);
-
-  if (!currentList) {
-    return (
-      <div className="min-h-screen flex flex-col pb-16 bg-gray-50">
-        <Header title="Scan Item" showBackButton />
-        <main className="flex-1 p-4 flex items-center justify-center">
-          <p className="text-gray-500">
-            {isListLoading || lists.length === 0
-              ? 'Loading lists...'
-              : 'No list available. Please create one first.'}
-          </p>
-        </main>
-        <BottomNav />
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen flex flex-col pb-16 bg-gray-50">
       <Header title="Scan Item" showBackButton />
+
       <main className="flex-1 p-4 space-y-4">
-        {/* hint: which list we’ll save to */}
-        <div className="text-xs bg-zinc-100 text-zinc-700 px-2 py-1 rounded w-fit">
-          Saving to: <span className="font-medium">{currentList.name}</span>
-        </div>
+        {/* Saving target hint (or nudge to create a list) */}
+        {currentList ? (
+          <div className="text-xs bg-zinc-100 text-zinc-700 px-2 py-1 rounded w-fit">
+            Saving to: <span className="font-medium">{currentList.name}</span>
+          </div>
+        ) : (
+          <div className="text-xs bg-amber-100 text-amber-800 px-2 py-1 rounded w-fit">
+            No list selected — scans work, but you’ll need a list to <button
+              className="underline font-medium"
+              onClick={() => navigate('/lists')}
+            >save</button>.
+          </div>
+        )}
 
         {barcodeScannerComponent}
 
@@ -258,8 +252,8 @@ export const ScanPage: React.FC = () => {
           }}
         />
       </main>
+
       <BottomNav />
     </div>
   );
 };
-
