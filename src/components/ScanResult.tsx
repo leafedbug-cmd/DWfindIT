@@ -1,5 +1,5 @@
 // src/components/ScanResult.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { UnifiedScanResult } from '../pages/ScanPage';
 import { Pencil, Save, X, Minus, Plus } from 'lucide-react';
 
@@ -8,6 +8,8 @@ interface ScanResultProps {
   isLoading: boolean;
   onSave: (updates: { quantity: number; notes: string }) => void;
   onClear: () => void;
+  /** NEW: if provided, we set quantity to this value (e.g., from a scanned qty barcode) */
+  prefillQuantity?: number;
 }
 
 export const ScanResult: React.FC<ScanResultProps> = ({
@@ -15,18 +17,30 @@ export const ScanResult: React.FC<ScanResultProps> = ({
   isLoading,
   onSave,
   onClear,
+  prefillQuantity,
 }) => {
-  // keep both number and text so users can clear/backspace freely
   const [quantity, setQuantity] = useState<number>(1);
   const [qtyText, setQtyText] = useState<string>('1');
   const [notes, setNotes] = useState('');
 
+  const qtyInputRef = useRef<HTMLInputElement | null>(null);
+
+  // reset when a new item is scanned
   useEffect(() => {
-    // reset form when a new item is scanned
     setQuantity(1);
     setQtyText('1');
     setNotes('');
+    // optional: auto-focus when a new item appears
+    setTimeout(() => qtyInputRef.current?.focus(), 50);
   }, [item]);
+
+  // apply prefilled qty coming from a qty barcode
+  useEffect(() => {
+    if (typeof prefillQuantity === 'number' && prefillQuantity >= 1) {
+      setQuantity(prefillQuantity);
+      setQtyText(String(prefillQuantity));
+    }
+  }, [prefillQuantity]);
 
   if (!item) return null;
 
@@ -52,7 +66,7 @@ export const ScanResult: React.FC<ScanResultProps> = ({
 
   return (
     <div className="bg-white p-4 rounded-lg shadow-sm border space-y-4">
-      {/* Quantity with +/- and easy typing */}
+      {/* Quantity */}
       <div className="flex items-center gap-3">
         <label htmlFor="quantity" className="font-medium text-gray-700">
           Quantity
@@ -70,14 +84,13 @@ export const ScanResult: React.FC<ScanResultProps> = ({
 
           <input
             id="quantity"
-            // text + inputMode to allow backspace/empty and show 10-key keypad
+            ref={qtyInputRef}
             type="text"
             inputMode="numeric"
             pattern="[0-9]*"
             className="w-16 p-2 text-center border-l border-r outline-none"
             value={qtyText}
             onChange={(e) => {
-              // keep only digits; allow empty while typing
               const digits = e.target.value.replace(/\D/g, '');
               setQtyText(digits);
             }}
