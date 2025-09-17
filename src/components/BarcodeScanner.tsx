@@ -153,7 +153,7 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
     }
   }, [onScanError])
 
-  // Auto-start when ready (unless explicitly disabled)
+  // Auto-start when ready (unless explicitly disabled); some browsers may still block this.
   useEffect(() => {
     if (selectedCameraId && isInitialized && !isScanning && !error && mountedRef.current) {
       if (autoStart === false) return
@@ -237,6 +237,19 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
           </div>
         )}
       </div>
+
+      {/* Manual start button (fallback when auto-start was blocked) */}
+      {isInitialized && !isScanning && (
+        <div className="mt-3">
+          <button
+            type="button"
+            onClick={startScanner}
+            className="w-full px-4 py-2 rounded-lg bg-orange-600 text-white font-semibold hover:bg-orange-700"
+          >
+            Start Camera
+          </button>
+        </div>
+      )}
 
       {cooldownInterval.current && cooldownRemaining > 0 && (
         <div className="text-center mt-3 p-2 bg-orange-100 text-orange-800 rounded">

@@ -1,7 +1,7 @@
 // src/components/ScanResult.tsx
 import React, { useState, useEffect } from 'react';
 import { UnifiedScanResult } from '../pages/ScanPage';
-import { Hash, Pencil, Save, X } from 'lucide-react';
+import { Pencil, Save, X, Minus, Plus } from 'lucide-react';
 
 interface ScanResultProps {
   item: UnifiedScanResult | null;
@@ -20,7 +20,6 @@ export const ScanResult: React.FC<ScanResultProps> = ({
   const [notes, setNotes] = useState('');
 
   useEffect(() => {
-    // reset form when a new item is scanned
     setQuantity(1);
     setNotes('');
   }, [item]);
@@ -31,25 +30,41 @@ export const ScanResult: React.FC<ScanResultProps> = ({
     onSave({ quantity, notes });
   };
 
+  const increment = () => setQuantity((q) => q + 1);
+  const decrement = () => setQuantity((q) => Math.max(1, q - 1));
+
   return (
     <div className="bg-white p-4 rounded-lg shadow-sm border space-y-4">
-      {/* ⚡ Removed duplicate item details — overlay already shows it */}
-
-      {/* Quantity Input */}
-      <div className="flex items-center space-x-2">
-        <Hash className="h-5 w-5 text-gray-400" />
+      {/* Quantity Input with + / - buttons */}
+      <div className="flex items-center space-x-3">
         <label htmlFor="quantity" className="font-medium text-gray-700">
           Quantity
         </label>
-        <input
-          type="number"
-          id="quantity"
-          value={quantity}
-          onChange={(e) =>
-            setQuantity(Math.max(1, parseInt(e.target.value, 10) || 1))
-          }
-          className="w-20 p-2 border rounded-md text-center"
-        />
+        <div className="flex items-center border rounded-md">
+          <button
+            type="button"
+            onClick={decrement}
+            className="p-2 text-gray-600 hover:bg-gray-100"
+          >
+            <Minus className="h-4 w-4" />
+          </button>
+          <input
+            type="number"
+            id="quantity"
+            value={quantity}
+            onChange={(e) =>
+              setQuantity(Math.max(1, parseInt(e.target.value, 10) || 1))
+            }
+            className="w-16 p-2 text-center border-l border-r"
+          />
+          <button
+            type="button"
+            onClick={increment}
+            className="p-2 text-gray-600 hover:bg-gray-100"
+          >
+            <Plus className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
       {/* Notes Input */}
