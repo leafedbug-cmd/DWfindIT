@@ -5,13 +5,22 @@ import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode'
 interface BarcodeScannerProps {
   onScanSuccess: (barcode: string) => void
   onScanError?: (error: string) => void
+  /** if false, do NOT auto-start. if true/undefined, auto-start when ready */
+  autoStart?: boolean
+  /** optional UI rendered on top of the camera preview (bottom overlay) */
+  overlay?: React.ReactNode
 }
 
 const SCAN_COOLDOWN_MS = 3000
 
-export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, onScanError }) => {
+export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
+  onScanSuccess,
+  onScanError,
+  autoStart,
+  overlay,
+}) => {
   const [cameras, setCameras] = useState<any[]>([])
-  const [selectedCameraId, setSelectedCameraId] = useState<string>('') // <- fixed
+  const [selectedCameraId, setSelectedCameraId] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
   const [isInitialized, setIsInitialized] = useState(false)
   const [initializationStatus, setInitializationStatus] = useState<string>('Initializing...')
@@ -78,7 +87,6 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, o
           startCooldown()
         },
         errMsg => {
-          // Normal decode errors are noisy; ignore the common ones
           if (!/NotFoundException|No MultiFormat Readers/i.test(errMsg)) {
             console.debug('Scanner decode error:', errMsg)
           }
@@ -86,13 +94,14 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, o
       )
     } catch (err: any) {
       if (!mountedRef.current) return
-      setError(err?.message || String(err))
+      const msg = err?.message || String(err)
+      setError(msg)
       setIsScanning(false)
-      onScanError?.(err?.message || String(err))
+      onScanError?.(msg)
     }
   }, [selectedCameraId, isScanning, onScanSuccess, onScanError])
 
-  // Initialize camera AFTER mount
+  // Initialize after mount
   useEffect(() => {
     mountedRef.current = true
 
@@ -104,7 +113,6 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, o
         const readerElement = document.getElementById('reader')
         if (!readerElement) throw new Error('Scanner container not found in DOM')
 
-        // Clean any previous instance
         if (html5QrCodeRef.current) {
           try { await html5QrCodeRef.current.stop() } catch {}
           try { await html5QrCodeRef.current.clear() } catch {}
@@ -137,7 +145,6 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, o
       mountedRef.current = false
       if (cooldownInterval.current) clearInterval(cooldownInterval.current)
       if (html5QrCodeRef.current) {
-        // stop → clear is the safest sequence
         html5QrCodeRef.current.stop().catch(() => {}).finally(() => {
           html5QrCodeRef.current?.clear().catch(() => {})
           html5QrCodeRef.current = null
@@ -146,12 +153,13 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, o
     }
   }, [onScanError])
 
-  // Auto-start when ready
+  // Auto-start when ready (unless explicitly disabled)
   useEffect(() => {
     if (selectedCameraId && isInitialized && !isScanning && !error && mountedRef.current) {
+      if (autoStart === false) return
       startScanner()
     }
-  }, [selectedCameraId, isInitialized, isScanning, error, startScanner])
+  }, [selectedCameraId, isInitialized, isScanning, error, startScanner, autoStart])
 
   const handleCameraChange = async (id: string) => {
     if (html5QrCodeRef.current) {
@@ -166,7 +174,6 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, o
     setError(null)
     setIsInitialized(false)
     setInitializationStatus('Retrying...')
-    // Re-run initializer by toggling state; simplest is just reload
     window.location.reload()
   }
 
@@ -204,16 +211,28 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, o
         </div>
       )}
 
-      <div
-        id="reader"
-        className="w-full rounded-lg overflow-hidden"
-        style={{ minHeight: '300px', border: '2px solid #e5e7eb', transition: 'border 0.3s ease', backgroundColor: isInitialized ? 'black' : '#f3f4f6' }}
-      >
-        {!isInitialized && (
-          <div className="flex items-center justify-center h-full p-8 text-gray-500">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-400 mx-auto mb-2"></div>
-              <p>Preparing camera...</p>
+      {/* Preview container with overlay */}
+      <div className="relative">
+        <div
+          id="reader"
+          className="w-full rounded-lg overflow-hidden"
+          style={{ minHeight: '300px', border: '2px solid #e5e7eb', transition: 'border 0.3s ease', backgroundColor: isInitialized ? 'black' : '#f3f4f6' }}
+        >
+          {!isInitialized && (
+            <div className="flex items-center justify-center h-full p-8 text-gray-500">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-400 mx-auto mb-2"></div>
+                <p>Preparing camera...</p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* bottom overlay slot */}
+        {overlay && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 p-2">
+            <div className="pointer-events-auto rounded-xl bg-white/80 backdrop-blur shadow-md border border-gray-200">
+              {overlay}
             </div>
           </div>
         )}

@@ -9,6 +9,7 @@ import { useListStore } from '../store/listStore';
 import { useScanItemStore } from '../store/scanItemStore';
 import { useStore } from '../contexts/StoreContext';
 import { supabase } from '../services/supabase';
+import { Package, Tag } from 'lucide-react';
 
 // Unified result type for parts & equipment
 export interface UnifiedScanResult {
@@ -95,7 +96,9 @@ export const ScanPage: React.FC = () => {
 
         if (equipmentData) {
           setScanSuccess(
-            `Equipment Found: ${equipmentData.stock_number}${equipmentData.serial_number ? ` (SN: ${equipmentData.serial_number})` : ''}`
+            `Equipment Found: ${equipmentData.stock_number}${
+              equipmentData.serial_number ? ` (SN: ${equipmentData.serial_number})` : ''
+            }`
           );
           setLastScannedItem({
             type: 'equipment',
@@ -171,15 +174,60 @@ export const ScanPage: React.FC = () => {
   };
 
   const handleCameraError = useCallback((error: string) => setCameraError(error), []);
+  const overlayCard = useMemo(() => {
+    if (!lastScannedItem) return null;
+
+    // rows helper
+    const Row = ({ label, value }: { label: string; value?: string | number | null }) =>
+      !value ? null : (
+        <div className="flex items-baseline justify-between gap-3 text-xs sm:text-sm px-3 py-1">
+          <span className="text-gray-600">{label}</span>
+          <span className="font-semibold text-gray-900 text-right">{String(value)}</span>
+        </div>
+      );
+
+    const typeBadge =
+      lastScannedItem.type === 'part' ? (
+        <span className="inline-flex items-center text-[11px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
+          <Package className="h-3 w-3 mr-1" /> Part
+        </span>
+      ) : (
+        <span className="inline-flex items-center text-[11px] px-2 py-0.5 rounded-full bg-green-100 text-green-800">
+          <Tag className="h-3 w-3 mr-1" /> Equipment
+        </span>
+      );
+
+    return (
+      <div className="p-2">
+        <div className="flex items-center justify-between px-3 pt-2">
+          {typeBadge}
+        </div>
+        {lastScannedItem.type === 'part' ? (
+          <>
+            <Row label="Part Number" value={lastScannedItem.primaryIdentifier} />
+            <Row label="Bin Location" value={lastScannedItem.secondaryIdentifier} />
+          </>
+        ) : (
+          <>
+            <Row label="Stock #" value={lastScannedItem.primaryIdentifier} />
+            <Row label="Serial #" value={lastScannedItem.equipmentDetails?.serial_number ?? undefined} />
+            <Row label="Branch" value={lastScannedItem.equipmentDetails?.branch ?? undefined} />
+          </>
+        )}
+      </div>
+    );
+  }, [lastScannedItem]);
+
   const barcodeScannerComponent = useMemo(
     () => (
       <BarcodeScanner
         autoStart={autoStart}
+        overlay={overlayCard}
         onScanSuccess={handleScan}
         onScanError={handleCameraError}
       />
     ),
-    [handleScan, handleCameraError, autoStart]
+    [handleScan, handleCameraError, autoStart, overlayCard]
   );
 
   const displayError = scanError || itemError;
@@ -190,7 +238,7 @@ export const ScanPage: React.FC = () => {
     if (lists.length === 0) fetchLists();
   }, [lists.length, fetchLists]);
 
-  // prefer ?list=... when selecting current list
+  // prefer ?list=... when selecting current list (but allow scanning without one)
   useEffect(() => {
     if (lists.length === 0) return;
 
@@ -201,8 +249,6 @@ export const ScanPage: React.FC = () => {
         return;
       }
     }
-
-    // don't auto-pick first list here; users can scan without one
   }, [lists, currentList, setCurrentList, preselectListId]);
 
   return (
@@ -217,10 +263,11 @@ export const ScanPage: React.FC = () => {
           </div>
         ) : (
           <div className="text-xs bg-amber-100 text-amber-800 px-2 py-1 rounded w-fit">
-            No list selected — scans work, but you’ll need a list to <button
-              className="underline font-medium"
-              onClick={() => navigate('/lists')}
-            >save</button>.
+            No list selected — scans work, but you’ll need a list to{' '}
+            <button className="underline font-medium" onClick={() => navigate('/lists')}>
+              save
+            </button>
+            .
           </div>
         )}
 
