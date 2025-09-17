@@ -1,5 +1,5 @@
 // src/pages/ScanPage.tsx
-import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { BarcodeScanner } from '../components/BarcodeScanner';
 import { ScanResult } from '../components/ScanResult';
@@ -31,21 +31,6 @@ export interface UnifiedScanResult {
   };
 }
 
-// --- helper: try to pull a quantity out of a barcode string ---
-function parseQuantityFrom(barcode: string): number | null {
-  const s = String(barcode).trim();
-
-  // common patterns: "QTY: 25", "QTY25", "QUANTITY-10", or just "25"
-  const match =
-    s.match(/(?:^|[^A-Za-z])(QTY|QUANTITY)\s*[:\-]?\s*([0-9]{1,4})\b/i)?.[2] ||
-    s.match(/^[0-9]{1,4}$/)?.[0];
-
-  if (!match) return null;
-  const n = parseInt(match, 10);
-  if (!n || n < 1) return null;
-  return n;
-}
-
 export const ScanPage: React.FC = () => {
   const { selectedStore } = useStore();
   const navigate = useNavigate();
@@ -63,44 +48,14 @@ export const ScanPage: React.FC = () => {
   const [lastScannedItem, setLastScannedItem] = useState<UnifiedScanResult | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
 
-  // NEW: qty capture window
-  const [awaitingQty, setAwaitingQty] = useState(false);
-  const [prefillQty, setPrefillQty] = useState<number | undefined>(undefined);
-  const qtyTimerRef = useRef<number | null>(null);
-
-  const openQtyWindow = useCallback(() => {
-    setAwaitingQty(true);
-    if (qtyTimerRef.current) window.clearTimeout(qtyTimerRef.current);
-    qtyTimerRef.current = window.setTimeout(() => {
-      setAwaitingQty(false);
-      qtyTimerRef.current = null;
-    }, 6000); // 6s to scan the qty code
-  }, []);
-
   // --- Scan handler ---
   const handleScan = useCallback(
     async (barcode: string) => {
-      // If we're waiting for QTY, try to parse and prefill; don't query DB
-      if (awaitingQty) {
-        const n = parseQuantityFrom(barcode);
-        if (n) {
-          setPrefillQty(n);
-          setAwaitingQty(false);
-          if (qtyTimerRef.current) window.clearTimeout(qtyTimerRef.current);
-          qtyTimerRef.current = null;
-          setScanSuccess(`Quantity captured: ${n}`);
-          setTimeout(() => setScanSuccess(null), 1500);
-          return;
-        }
-        // if it wasn't a qty, fall through to normal lookup
-      }
-
       if (isProcessing) return;
 
       setIsProcessing(true);
       setScanError(null);
       setScanSuccess(null);
-      // NOTE: we keep lastScannedItem so overlay stays visible between scans
 
       try {
         // 1) parts by part_number (store-limited)
@@ -124,8 +79,6 @@ export const ScanPage: React.FC = () => {
             store_location: partData.store_location,
             description: partData.description,
           });
-          // open a short window to scan qty
-          openQtyWindow();
           return;
         }
 
@@ -163,7 +116,6 @@ export const ScanPage: React.FC = () => {
               internal_unit_y_or_n: equipmentData.internal_unit_y_or_n ?? null,
             },
           });
-          // equipment usually doesn't have qty barcodes; don't open qty window
           return;
         }
 
@@ -177,7 +129,7 @@ export const ScanPage: React.FC = () => {
         setIsProcessing(false);
       }
     },
-    [awaitingQty, isProcessing, selectedStore, openQtyWindow]
+    [isProcessing, selectedStore]
   );
 
   // Save handler
@@ -213,17 +165,13 @@ export const ScanPage: React.FC = () => {
         `Added ${updates.quantity} "${newItemData.part_number}" to "${targetListName}" ✅`
       );
       setLastScannedItem(null);
-      setPrefillQty(undefined);
-      setAwaitingQty(false);
-      if (qtyTimerRef.current) window.clearTimeout(qtyTimerRef.current);
-      qtyTimerRef.current = null;
       setTimeout(() => setScanSuccess(null), 3000);
     }
   };
 
   const handleCameraError = useCallback((error: string) => setCameraError(error), []);
 
-  // Overlay card (shows quick item summary in the preview)
+  // Overlay card (quick summary in camera preview)
   const overlayCard = useMemo(() => {
     if (!lastScannedItem) return null;
 
@@ -315,13 +263,6 @@ export const ScanPage: React.FC = () => {
 
         {barcodeScannerComponent}
 
-        {/* Qty prompt while window is open */}
-        {awaitingQty && (
-          <p className="p-3 text-center text-sm bg-amber-100 text-amber-800 rounded-lg">
-            Scan <span className="font-semibold">Quantity</span> barcode (or type below)…
-          </p>
-        )}
-
         <div className="space-y-2">
           {cameraError && (
             <p className="p-3 text-center text-sm bg-yellow-100 text-yellow-800 rounded-lg">
@@ -343,12 +284,7 @@ export const ScanPage: React.FC = () => {
           onClear={() => {
             setLastScannedItem(null);
             setScanError(null);
-            setPrefillQty(undefined);
-            setAwaitingQty(false);
-            if (qtyTimerRef.current) window.clearTimeout(qtyTimerRef.current);
-            qtyTimerRef.current = null;
           }}
-          prefillQuantity={prefillQty}
         />
       </main>
 
