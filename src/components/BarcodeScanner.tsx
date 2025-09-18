@@ -17,7 +17,7 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
   autoStart = true,
   overlay,
 }) => {
-  // unique container id for this instance (avoids "Scanner container not found")
+  // unique container per instance
   const containerIdRef = useRef<string>(`reader-${Math.random().toString(36).slice(2)}`);
   const containerElRef = useRef<HTMLDivElement | null>(null);
 
@@ -33,6 +33,7 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
 
   const lastScanned = useRef<string>('');
   const lastScanTime = useRef<number>(0);
+
   const cooldownInterval = useRef<ReturnType<typeof setInterval> | null>(null);
   const [cooldownRemaining, setCooldownRemaining] = useState<number>(0);
 
@@ -40,12 +41,12 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
     setCooldownRemaining(SCAN_COOLDOWN_MS / 1000);
     if (cooldownInterval.current) clearInterval(cooldownInterval.current);
     cooldownInterval.current = setInterval(() => {
-      setCooldownRemaining(prev => {
-        if (prev <= 1) {
+      setCooldownRemaining((p) => {
+        if (p <= 1) {
           if (cooldownInterval.current) clearInterval(cooldownInterval.current);
           return 0;
         }
-        return prev - 1;
+        return p - 1;
       });
     }, 1000);
   };
@@ -61,57 +62,105 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
     setIsScanning(false);
   }, [isScanning]);
 
+  /** Try to quickly open/close a stream to release camera lock (e.g., after Quick Scan modal). */
+  const preflightProbe = useCallback(
+    async (constraints: MediaStreamConstraints) => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        stream.getTracks().forEach((t) => t.stop());
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    []
+  );
+
+  /** Start scanner with robust fallbacks + retries. */
   const startScanner = useCallback(async () => {
-    if (!html5QrCodeRef.current || !selectedCameraId || isScanning || !mountedRef.current) return;
+    if (!html5QrCodeRef.current || isScanning || !mountedRef.current) return;
+
+    const tryStart = async (videoConstraints: any, attempts = 2) => {
+      // try to free the camera beforehand
+      await preflightProbe({ video: videoConstraints });
+
+      for (let i = 0; i < attempts; i++) {
+        try {
+          setIsScanning(true);
+          await html5QrCodeRef.current!.start(
+            videoConstraints,
+            {
+              fps: 10,
+              qrbox: { width: 250, height: 250 },
+              aspectRatio: 1.0,
+              formatsToSupport: [
+                Html5QrcodeSupportedFormats.CODE_128,
+                Html5QrcodeSupportedFormats.CODE_39,
+                Html5QrcodeSupportedFormats.EAN_13,
+                Html5QrcodeSupportedFormats.EAN_8,
+                Html5QrcodeSupportedFormats.UPC_A,
+                Html5QrcodeSupportedFormats.UPC_E,
+                Html5QrcodeSupportedFormats.QR_CODE,
+              ],
+              experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+            },
+            (decodedText) => {
+              if (!mountedRef.current) return;
+              const now = Date.now();
+              if (decodedText === lastScanned.current && now - lastScanTime.current < SCAN_COOLDOWN_MS) return;
+
+              lastScanned.current = decodedText;
+              lastScanTime.current = now;
+
+              const el = containerElRef.current;
+              if (el) {
+                el.style.border = '4px solid #10b981';
+                setTimeout(() => { if (mountedRef.current && el) el.style.border = '2px solid #e5e7eb'; }, 300);
+              }
+
+              onScanSuccess(decodedText);
+              startCooldown();
+            },
+            () => {} // ignore noisy decode errors
+          );
+          return true; // success
+        } catch (err: any) {
+          setIsScanning(false);
+          const msg = err?.message || String(err);
+          // if device is busy, wait a bit and retry
+          if (/Could not start video source|NotReadableError/i.test(msg)) {
+            await new Promise((r) => setTimeout(r, 300));
+            continue;
+          }
+          throw err; // other errors bubble
+        }
+      }
+      return false;
+    };
 
     try {
-      setIsScanning(true);
-      await html5QrCodeRef.current.start(
-        { deviceId: { exact: selectedCameraId } },
-        {
-          fps: 10,
-          qrbox: { width: 250, height: 250 },
-          aspectRatio: 1.0,
-          formatsToSupport: [
-            Html5QrcodeSupportedFormats.CODE_128,
-            Html5QrcodeSupportedFormats.CODE_39,
-            Html5QrcodeSupportedFormats.EAN_13,
-            Html5QrcodeSupportedFormats.EAN_8,
-            Html5QrcodeSupportedFormats.UPC_A,
-            Html5QrcodeSupportedFormats.UPC_E,
-            Html5QrcodeSupportedFormats.QR_CODE,
-          ],
-          experimentalFeatures: { useBarCodeDetectorIfSupported: true },
-        },
-        (decodedText) => {
-          if (!mountedRef.current) return;
-          const now = Date.now();
-          if (decodedText === lastScanned.current && now - lastScanTime.current < SCAN_COOLDOWN_MS) return;
+      // 1) prefer explicit deviceId
+      if (selectedCameraId) {
+        const ok = await tryStart({ deviceId: { exact: selectedCameraId } }, 3);
+        if (ok) return;
+      }
 
-          lastScanned.current = decodedText;
-          lastScanTime.current = now;
+      // 2) fallback: environment camera
+      let ok = await tryStart({ facingMode: { exact: 'environment' } }, 3);
+      if (ok) return;
 
-          // quick success flash
-          const el = containerElRef.current;
-          if (el) {
-            el.style.border = '4px solid #10b981';
-            setTimeout(() => { if (mountedRef.current && el) el.style.border = '2px solid #e5e7eb'; }, 300);
-          }
+      // 3) last resort: user/front camera
+      ok = await tryStart({ facingMode: 'user' }, 2);
+      if (ok) return;
 
-          onScanSuccess(decodedText);
-          startCooldown();
-        },
-        // ignore noisy decode errors so logs don’t spam
-        () => {}
-      );
+      throw new Error('Could not start video source');
     } catch (err: any) {
       if (!mountedRef.current) return;
       const msg = err?.message || String(err);
       setError(msg);
-      setIsScanning(false);
       onScanError?.(msg);
     }
-  }, [selectedCameraId, isScanning, onScanSuccess, onScanError]);
+  }, [isScanning, onScanError, onScanSuccess, preflightProbe, selectedCameraId]);
 
   // initialize after the container is in the DOM
   const initialize = useCallback(async () => {
@@ -119,22 +168,15 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
       setError(null);
       setInitStatus('Checking camera access…');
 
-      // wait a frame to ensure the div is mounted
       await new Promise(requestAnimationFrame);
+      if (!containerElRef.current) throw new Error('Scanner container not found');
 
-      const containerId = containerIdRef.current;
-      if (!containerElRef.current || !containerId) {
-        throw new Error('Scanner container not found');
-      }
-
-      // dispose previous instance if any
       if (html5QrCodeRef.current) {
         try { await html5QrCodeRef.current.stop(); } catch {}
         try { await html5QrCodeRef.current.clear(); } catch {}
         html5QrCodeRef.current = null;
       }
-
-      html5QrCodeRef.current = new Html5Qrcode(containerId);
+      html5QrCodeRef.current = new Html5Qrcode(containerIdRef.current);
 
       setInitStatus('Requesting camera…');
       const devices = await Html5Qrcode.getCameras();
@@ -142,7 +184,7 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
 
       const mapped = devices.map((d: any) => ({ id: d.id, label: d.label || `Camera ${d.id}` }));
       setCameras(mapped);
-      const back = mapped.find(d => /back|environment|rear/i.test(d.label)) || mapped[0];
+      const back = mapped.find((d) => /back|environment|rear/i.test(d.label)) || mapped[0];
       setSelectedCameraId(back.id);
 
       setIsInitialized(true);
@@ -248,7 +290,6 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
         )}
       </div>
 
-      {/* Manual start fallback if autoplay was blocked */}
       {isInitialized && !isScanning && (
         <div className="mt-2">
           <button
