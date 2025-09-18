@@ -1,7 +1,7 @@
 // src/components/ScanResult.tsx
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { UnifiedScanResult } from '../pages/ScanPage';
-import { ChevronDown, ChevronUp, Minus, Plus, Save, X, Pencil } from 'lucide-react';
+import { Hash, Pencil, Save, X } from 'lucide-react';
 
 interface ScanResultProps {
   item: UnifiedScanResult | null;
@@ -10,102 +10,87 @@ interface ScanResultProps {
   onClear: () => void;
 }
 
-export const ScanResult: React.FC<ScanResultProps> = ({
-  item,
-  isLoading,
-  onSave,
-  onClear,
-}) => {
-  const [qty, setQty] = useState<number>(1);
-  const [qtyText, setQtyText] = useState('1');
+export const ScanResult: React.FC<ScanResultProps> = ({ item, isLoading, onSave, onClear }) => {
+  const [quantity, setQuantity] = useState(1);
   const [notes, setNotes] = useState('');
-  const [showExtras, setShowExtras] = useState(false);
-  const qtyRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
-    // reset when new scan arrives
-    setQty(1);
-    setQtyText('1');
-    setNotes('');
-    setShowExtras(false);
-    setTimeout(() => qtyRef.current?.focus(), 50);
+    // Reset form when a new item is scanned
+    if (item) {
+      setQuantity(1);
+      setNotes('');
+    }
   }, [item]);
 
   if (!item) return null;
 
-  const commitQty = (textVal: string) => {
-    const n = textVal === '' ? 1 : Math.max(1, parseInt(textVal, 10) || 1);
-    setQty(n);
-    setQtyText(String(n));
+  const handleSave = () => {
+    onSave({ quantity, notes });
   };
-  const dec = () => { const n = Math.max(1, qty - 1); setQty(n); setQtyText(String(n)); };
-  const inc = () => { const n = qty + 1; setQty(n); setQtyText(String(n)); };
-
-  const handleSave = () => onSave({ quantity: qty, notes });
 
   return (
-    <div className="bg-white p-3 rounded-xl shadow-sm border space-y-2">
-      {/* one-line primary controls */}
-      <div className="flex items-center gap-2">
-        <span className="text-sm text-gray-600">Qty</span>
-
-        <div className="flex items-center rounded-md border overflow-hidden">
-          <button type="button" onClick={dec} className="px-2 py-2 text-gray-700 hover:bg-gray-100">
-            <Minus className="h-4 w-4" />
+    <div className="bg-white p-3 rounded-lg shadow-sm border space-y-3">
+      {/* Quantity Controls */}
+      <div className="flex items-center space-x-3">
+        <Hash className="h-4 w-4 text-gray-400" />
+        <label htmlFor="quantity" className="font-medium text-gray-700 text-sm">
+          Quantity
+        </label>
+        <div className="flex items-center border rounded-md overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+            className="w-8 h-8 flex items-center justify-center text-lg font-bold text-gray-600 hover:bg-gray-100"
+          >
+            −
           </button>
           <input
-            ref={qtyRef}
-            type="text"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            value={qtyText}
-            onChange={(e) => setQtyText(e.target.value.replace(/\D/g, ''))}
-            onBlur={() => commitQty(qtyText)}
-            className="w-12 text-center outline-none border-l border-r py-2"
+            type="number"
+            id="quantity"
+            value={quantity}
+            onChange={(e) =>
+              setQuantity(Math.max(1, parseInt(e.target.value, 10) || 1))
+            }
+            className="w-14 text-center border-x outline-none"
           />
-          <button type="button" onClick={inc} className="px-2 py-2 text-gray-700 hover:bg-gray-100">
-            <Plus className="h-4 w-4" />
+          <button
+            type="button"
+            onClick={() => setQuantity((q) => q + 1)}
+            className="w-8 h-8 flex items-center justify-center text-lg font-bold text-gray-600 hover:bg-gray-100"
+          >
+            +
           </button>
         </div>
+      </div>
 
+      {/* Notes Input */}
+      <div className="flex items-start space-x-2">
+        <Pencil className="h-4 w-4 text-gray-400 mt-2" />
+        <textarea
+          placeholder="Add notes..."
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          className="w-full p-2 border rounded-md text-sm"
+          rows={2}
+        />
+      </div>
+
+      {/* Action Buttons */}
+      <div className="flex space-x-2">
+        <button
+          onClick={onClear}
+          className="flex-1 flex items-center justify-center p-2 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300"
+        >
+          <X className="h-4 w-4 mr-1" /> Clear
+        </button>
         <button
           onClick={handleSave}
           disabled={isLoading}
-          className="ml-auto inline-flex items-center gap-2 rounded-md bg-orange-600 px-3 py-2 text-white font-semibold hover:bg-orange-700 disabled:bg-gray-400"
+          className="flex-1 flex items-center justify-center p-2 bg-orange-600 text-white rounded-lg font-semibold hover:bg-orange-700 disabled:bg-gray-400"
         >
-          <Save className="h-4 w-4" /> {isLoading ? 'Saving…' : 'Save'}
-        </button>
-
-        <button
-          onClick={onClear}
-          className="inline-flex items-center gap-1 rounded-md bg-gray-200 px-3 py-2 text-gray-700 hover:bg-gray-300"
-        >
-          <X className="h-4 w-4" />
-          Clear
+          {isLoading ? 'Saving…' : <><Save className="h-4 w-4 mr-1" /> Save</>}
         </button>
       </div>
-
-      {/* collapsible extras: notes only (keeps layout short) */}
-      <button
-        type="button"
-        onClick={() => setShowExtras(v => !v)}
-        className="w-full flex items-center justify-between text-sm text-gray-600"
-      >
-        <span className="inline-flex items-center gap-2">
-          <Pencil className="h-4 w-4" /> Notes (optional)
-        </span>
-        {showExtras ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-      </button>
-
-      {showExtras && (
-        <textarea
-          rows={2}
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          placeholder="Add notes…"
-          className="w-full rounded-md border p-2 text-sm"
-        />
-      )}
     </div>
   );
 };
