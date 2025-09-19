@@ -79,7 +79,7 @@ export const ScanPage: React.FC = () => {
         const { data: { user } } = await supabase.auth.getUser();
 
         // 1) Try PARTS (by part_number + store)
-        const { data: partData, error: partError } = await supabase
+        const { data: partData } = await supabase
           .from('parts')
           .select('*')
           .eq('part_number', barcode)
@@ -141,8 +141,8 @@ export const ScanPage: React.FC = () => {
         }
 
         // 2) Try EQUIPMENT (by stock_number)
-        const { data: equipData, error: equipError } = await supabase
-          .from('equipment') // <-- ensure this table name matches your DB
+        const { data: equipData } = await supabase
+          .from('equipment') // <-- ensure this matches your DB table
           .select('*')
           .eq('stock_number', barcode)
           .maybeSingle();
@@ -153,7 +153,7 @@ export const ScanPage: React.FC = () => {
           setShowOverlay(true);
           setTimeout(() => setShowOverlay(false), OVERLAY_MS);
 
-          // No list add for equipment (unless you want a separate equipment_scans table)
+          // (no list add for equipment)
           setScanSuccess(`${eq.stock_number} • ${eq.description ?? 'equipment'}`);
           return;
         }
@@ -197,31 +197,28 @@ export const ScanPage: React.FC = () => {
       <Header title="Scan Barcode" showBackButton />
 
       <main className="flex-1 p-4 space-y-4">
-        {/* Mode Toggle */}
-        <div className="flex space-x-4">
-          <button
-            className={viewMode === 'view' ? 'font-bold text-orange-600' : 'text-gray-600'}
-            onClick={() => setViewMode('view')}
-          >
-            View
-          </button>
-          <button
-            className={viewMode === 'add' ? 'font-bold text-orange-600' : 'text-gray-600'}
-            onClick={() => setViewMode('add')}
-          >
-            Add to List
-          </button>
-        </div>
+        {/* Top row: Mode Toggle + HUD in the red-square area */}
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="flex space-x-4">
+            <button
+              className={viewMode === 'view' ? 'font-bold text-orange-600' : 'text-gray-600'}
+              onClick={() => setViewMode('view')}
+            >
+              View
+            </button>
+            <button
+              className={viewMode === 'add' ? 'font-bold text-orange-600' : 'text-gray-600'}
+              onClick={() => setViewMode('add')}
+            >
+              Add to List
+            </button>
+          </div>
 
-        {/* Scanner with overlay container */}
-        <div className="relative">
-          {barcodeScannerComponent}
-
-          {/* Compact HUD overlay */}
+          {/* Compact HUD lives here (top-right on wide, full-width on small) */}
           {showOverlay && lastScanned && (
             <div
-              className={`pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 w-[95%] max-w-xl 
-                          rounded-xl text-white shadow-lg backdrop-blur-sm
+              className={`rounded-xl text-white shadow-lg backdrop-blur-sm
+                          md:w-[360px] w-full
                           ${lastScanned.kind === 'part' ? 'bg-black/70' : 'bg-slate-900/70'}`}
             >
               <div className="px-3 py-2">
@@ -283,6 +280,11 @@ export const ScanPage: React.FC = () => {
               </div>
             </div>
           )}
+        </div>
+
+        {/* Scanner */}
+        <div className="relative">
+          {barcodeScannerComponent}
         </div>
 
         {/* Camera Error Display */}
