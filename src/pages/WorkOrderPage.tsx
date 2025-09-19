@@ -6,26 +6,35 @@ import { Html5Qrcode } from "html5-qrcode";
 import { supabase } from "../services/supabase";
 import { X, Scan } from "lucide-react";
 
-type Equipment = {
-  id: string;
-  stock_number: string | null;
-  serial_number: string | null;
-  model: string | null;
-  manufacturer: string | null;
-  last_hourmeter: number | null;
-  customer_id: string | null;
-};
+type AnyRow = Record<string, any>;
+
+function pick<T = string>(row: AnyRow | null, keys: string[], fallback: T | "" = ""): T | "" {
+  if (!row) return fallback;
+  for (const k of keys) {
+    if (k in row && row[k] != null) return row[k] as T;
+  }
+  return fallback;
+}
 
 export const WorkOrderPage: React.FC = () => {
   const [isScanning, setIsScanning] = useState(false);
-  const [equip, setEquip] = useState<Equipment | null>(null);
+  const [row, setRow] = useState<AnyRow | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
-  // manual fields (we’ll wire save later)
+  // manual fields (save wiring comes later)
   const [contactName, setContactName] = useState("");
   const [contactPhone, setContactPhone] = useState("");
   const [jobLocation, setJobLocation] = useState("");
   const [instructions, setInstructions] = useState("");
+
+  // derive display fields from whatever columns exist
+  const display = {
+    manufacturer: pick(row, ["manufacturer", "make", "brand", "mfr", "vendor_name"], ""),
+    model: pick(row, ["model", "model_number", "model_no", "equipment_model"], ""),
+    serial: pick(row, ["serial_number", "sn", "serialno", "serial_no"], ""),
+    stock: pick(row, ["stock_number", "stock_no", "equipment_number", "unit_no"], ""),
+    hourmeter: pick<number | string>(row, ["last_hourmeter", "hourmeter", "hour_meter", "hours"], "")
+  };
 
   // scanner instance
   const scannerRef = useRef<Html5Qrcode | null>(null);
@@ -46,26 +55,22 @@ export const WorkOrderPage: React.FC = () => {
   const fetchEquipmentByCode = async (codeRaw: string) => {
     const code = codeRaw.trim();
 
-    // 1) try stock_number
-    let { data, error } = await supabase
+    // 1) try stock_number (string compare)
+    let res = await supabase
       .from("equipment")
-      .select("id, stock_number, serial_number, model, manufacturer, last_hourmeter, customer_id")
+      .select("*")
       .eq("stock_number", code)
       .maybeSingle();
 
-    if (error) return { data: null as any, error };
-
-    if (!data) {
+    if (!res.data) {
       // 2) try serial_number
-      const res2 = await supabase
+      res = await supabase
         .from("equipment")
-        .select("id, stock_number, serial_number, model, manufacturer, last_hourmeter, customer_id")
+        .select("*")
         .eq("serial_number", code)
         .maybeSingle();
-      return { data: res2.data as any, error: res2.error as any };
     }
-
-    return { data: data as any, error: null as any };
+    return res; // { data, error }
   };
 
   const startScan = async () => {
@@ -88,14 +93,10 @@ export const WorkOrderPage: React.FC = () => {
       async (decodedText) => {
         try {
           const { data, error } = await fetchEquipmentByCode(decodedText);
-          if (error) { setErr(error.message); setEquip(null); return; }
-          if (!data) {
-            setErr(`No equipment found for code: ${decodedText}`);
-            setEquip(null);
-            return;
-          }
+          if (error) { setErr(error.message); setRow(null); return; }
+          if (!data) { setErr(`No equipment found for code: ${decodedText}`); setRow(null); return; }
 
-          setEquip(data as Equipment);
+          setRow(data as AnyRow);
           setErr(null);
           setIsScanning(false);
           await cleanupScanner();
@@ -130,58 +131,19 @@ export const WorkOrderPage: React.FC = () => {
 
         {/* auto-filled equipment fields */}
         <div className="grid md:grid-cols-2 gap-4">
-          <input
-            className="w-full px-3 py-2 rounded border bg-white"
-            placeholder="Manufacturer"
-            value={equip?.manufacturer ?? ""}
-            readOnly
-          />
-          <input
-            className="w-full px-3 py-2 rounded border bg-white"
-            placeholder="Model"
-            value={equip?.model ?? ""}
-            readOnly
-          />
-          <input
-            className="w-full px-3 py-2 rounded border bg-white"
-            placeholder="Serial #"
-            value={equip?.serial_number ?? ""}
-            readOnly
-          />
-          <input
-            className="w-full px-3 py-2 rounded border bg-white"
-            placeholder="Customer Equipment # (Stock #)"
-            value={equip?.stock_number ?? ""}
-            readOnly
-          />
+          <input className="w-full px-3 py-2 rounded border bg-white" placeholder="Manufacturer" value={display.manufacturer} readOnly />
+          <input className="w-full px-3 py-2 rounded border bg-white" placeholder="Model" value={display.model} readOnly />
+          <input className="w-full px-3 py-2 rounded border bg-white" placeholder="Serial #" value={display.serial} readOnly />
+          <input className="w-full px-3 py-2 rounded border bg-white" placeholder="Customer Equipment # (Stock #)" value={display.stock} readOnly />
+          <input className="w-full px-3 py-2 rounded border bg-white" placeholder="Hourmeter" value={display.hourmeter ?? ""} readOnly />
         </div>
 
         {/* manual fields (save wiring comes later) */}
         <div className="grid md:grid-cols-2 gap-4">
-          <input
-            className="w-full px-3 py-2 rounded border bg-white"
-            placeholder="Contact Name"
-            value={contactName}
-            onChange={e=>setContactName(e.target.value)}
-          />
-          <input
-            className="w-full px-3 py-2 rounded border bg-white"
-            placeholder="Contact Phone"
-            value={contactPhone}
-            onChange={e=>setContactPhone(e.target.value)}
-          />
-          <input
-            className="w-full px-3 py-2 rounded border bg-white md:col-span-2"
-            placeholder="Job Location (optional)"
-            value={jobLocation}
-            onChange={e=>setJobLocation(e.target.value)}
-          />
-          <textarea
-            className="w-full px-3 py-2 rounded border bg-white md:col-span-2 h-28"
-            placeholder="Instructions"
-            value={instructions}
-            onChange={e=>setInstructions(e.target.value)}
-          />
+          <input className="w-full px-3 py-2 rounded border bg-white" placeholder="Contact Name" value={contactName} onChange={e=>setContactName(e.target.value)} />
+          <input className="w-full px-3 py-2 rounded border bg-white" placeholder="Contact Phone" value={contactPhone} onChange={e=>setContactPhone(e.target.value)} />
+          <input className="w-full px-3 py-2 rounded border bg-white md:col-span-2" placeholder="Job Location (optional)" value={jobLocation} onChange={e=>setJobLocation(e.target.value)} />
+          <textarea className="w-full px-3 py-2 rounded border bg-white md:col-span-2 h-28" placeholder="Instructions" value={instructions} onChange={e=>setInstructions(e.target.value)} />
         </div>
 
         {err && <div className="p-3 bg-red-100 border border-red-400 text-red-700 rounded">{err}</div>}
@@ -203,7 +165,7 @@ export const WorkOrderPage: React.FC = () => {
               style={{ minHeight: 220 }}
             />
             <p className="text-xs text-gray-500 mt-2">
-              Point the camera at the equipment barcode (stock number or serial number).
+              Point the camera at the equipment barcode (stock or serial).
             </p>
           </div>
         </div>
