@@ -1,221 +1,224 @@
 // src/components/BarcodeScanner.tsx
-import React, { useEffect, useRef, useState, useCallback } from 'react'
-import { Html5Qrcode, Html5QrcodeCameraType } from 'html5-qrcode'
+import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { Html5Qrcode } from 'html5-qrcode';
 
 interface BarcodeScannerProps {
-  onScanSuccess: (barcode: string) => void
-  onScanError?: (error: string) => void
+  onScanSuccess: (barcode: string) => void;
+  onScanError?: (error: string) => void;
 }
 
-const SCAN_COOLDOWN_MS = 3000
+const SCAN_COOLDOWN_MS = 3000; // 3s cooldown for duplicate scans
 
 export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, onScanError }) => {
-  const [cameras, setCameras] = useState<any[]>([])
-  const [selectedCameraId, setSelectedCameraId] = useState<string>('')
-  const [error, setError] = useState<string | null>(null)
-  const [isInitialized, setIsInitialized] = useState(false)
-  const [initializationStatus, setInitializationStatus] = useState<string>('Initializing camera…')
-  const [isScanning, setIsScanning] = useState<boolean>(false)
-  const [cooldownRemaining, setCooldownRemaining] = useState<number>(0)
+  const [cameras, setCameras] = useState<any[]>([]);
+  const [selectedCameraId, setSelectedCameraId] = useState<string>('');
+  const [error, setError] = useState<string | null>(null);
+  const [isInitialized, setIsInitialized] = useState(false);
+  const [initializationStatus, setInitializationStatus] = useState<string>('Initializing...');
+  const [isScanning, setIsScanning] = useState<boolean>(false);
+  const [cooldownRemaining, setCooldownRemaining] = useState<number>(0);
 
-  const html5QrCodeRef = useRef<Html5Qrcode | null>(null)
-  const lastScanned = useRef<string>('')
-  const lastScanTime = useRef<number>(0)
-  const cooldownInterval = useRef<NodeJS.Timeout>()
-  const mountedRef = useRef<boolean>(true)
+  const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
+  const lastScanned = useRef<string>('');
+  const lastScanTime = useRef<number>(0);
+  const cooldownInterval = useRef<NodeJS.Timeout | null>(null);
+  const mountedRef = useRef<boolean>(true);
 
-  // ---------- helpers ----------
   const startCooldown = () => {
-    setCooldownRemaining(SCAN_COOLDOWN_MS / 1000)
-    clearInterval(cooldownInterval.current)
+    setCooldownRemaining(SCAN_COOLDOWN_MS / 1000);
+    if (cooldownInterval.current) clearInterval(cooldownInterval.current);
     cooldownInterval.current = setInterval(() => {
       setCooldownRemaining(prev => {
         if (prev <= 1) {
-          clearInterval(cooldownInterval.current)
-          return 0
+          if (cooldownInterval.current) clearInterval(cooldownInterval.current);
+          return 0;
         }
-        return prev - 1
-      })
-    }, 1000)
-  }
-
-  const ensureVideoInline = () => {
-    // html5-qrcode creates its own <video>; nudge iOS to behave.
-    const video = document.querySelector<HTMLVideoElement>('#reader video')
-    if (video) {
-      video.setAttribute('playsinline', 'true')
-      video.setAttribute('autoplay', 'true')
-      video.muted = true
-    }
-  }
+        return prev - 1;
+      });
+    }, 1000);
+  };
 
   const stopScanner = useCallback(async () => {
     if (html5QrCodeRef.current) {
       try {
-        await html5QrCodeRef.current.stop()
-      } catch (_) {
-        // already stopped
+        await html5QrCodeRef.current.stop();
+      } catch {
+        // ignore
       }
-      try {
-        await html5QrCodeRef.current.clear()
-      } catch (_) {}
     }
-    setIsScanning(false)
-  }, [])
+    setIsScanning(false);
+  }, []);
 
   const startScanner = useCallback(async () => {
-    if (!html5QrCodeRef.current || !selectedCameraId || isScanning || !mountedRef.current) return
+    if (!html5QrCodeRef.current || !selectedCameraId || isScanning || !mountedRef.current) return;
 
-    setIsScanning(true)
-    setError(null)
-
-    // Prefer explicit deviceId (fixes many iOS/Safari issues)
-    const primaryConstraints = { deviceId: { exact: selectedCameraId } } as any
-    const fallbackConstraints = { facingMode: Html5QrcodeCameraType.BACK } as any
-
-    const config = {
-      fps: 10,
-      qrbox: { width: 250, height: 250 },
-      aspectRatio: 1.0,
-      // niceties when supported:
-      showTorchButtonIfSupported: true,
-      showZoomSliderIfSupported: true,
-    } as any
-
-    const onSuccess = (decodedText: string) => {
-      if (!mountedRef.current) return
-      const now = Date.now()
-      if (decodedText === lastScanned.current && now - lastScanTime.current < SCAN_COOLDOWN_MS) return
-
-      lastScanned.current = decodedText
-      lastScanTime.current = now
-
-      const reader = document.getElementById('reader')
-      if (reader) {
-        reader.style.border = '4px solid #10b981'
-        setTimeout(() => {
-          if (mountedRef.current) reader.style.border = '2px solid #e5e7eb'
-        }, 300)
-      }
-      onScanSuccess(decodedText)
-      startCooldown()
-    }
-
-    const onErr = (msg: string) => {
-      // ignore frequent "NotFoundException" noise
-      if (!/NotFoundException|No MultiFormat Readers/i.test(msg)) {
-        console.debug('Scanner error:', msg)
-      }
-    }
-
+    setIsScanning(true);
     try {
-      // try explicit deviceId
-      await html5QrCodeRef.current.start(primaryConstraints, config, onSuccess, onErr)
-      ensureVideoInline()
-    } catch (e1: any) {
-      console.warn('start with deviceId failed, trying fallback…', e1?.message)
-      try {
-        // fallback to facingMode
-        await html5QrCodeRef.current.start(fallbackConstraints, config, onSuccess, onErr)
-        ensureVideoInline()
-      } catch (e2: any) {
-        console.error('Failed to start scanner:', e2)
-        if (mountedRef.current) {
-          setError(e2.message || 'Could not start video source')
-          setIsScanning(false)
-          onScanError?.(e2.message || 'Could not start video source')
+      // iOS-friendly: pass constraints object instead of plain string
+      await html5QrCodeRef.current.start(
+        { deviceId: { exact: selectedCameraId } },
+        {
+          fps: 10,
+          qrbox: { width: 250, height: 250 },
+          aspectRatio: 1.0,
+        },
+        decodedText => {
+          if (!mountedRef.current) return;
+
+          const now = Date.now();
+          if (decodedText === lastScanned.current && now - lastScanTime.current < SCAN_COOLDOWN_MS) {
+            return;
+          }
+
+          lastScanned.current = decodedText;
+          lastScanTime.current = now;
+
+          // Visual flash
+          const reader = document.getElementById('reader');
+          if (reader) {
+            (reader as HTMLElement).style.border = '4px solid #10b981';
+            setTimeout(() => {
+              if (mountedRef.current) (reader as HTMLElement).style.border = '2px solid #e5e7eb';
+            }, 300);
+          }
+
+          onScanSuccess(decodedText);
+          startCooldown();
+        },
+        errorMessage => {
+          // Normal “not found” noise is fine; report only meaningful errors
+          if (
+            !errorMessage.includes('NotFoundException') &&
+            !errorMessage.includes('No MultiFormat Readers')
+          ) {
+            console.debug('Scanner error:', errorMessage);
+          }
         }
+      );
+      console.log('Scanner started');
+    } catch (err: any) {
+      console.error('Failed to start scanner:', err);
+      if (mountedRef.current) {
+        setError(err?.message || String(err));
+        setIsScanning(false);
+        onScanError?.(err?.message || String(err));
       }
     }
-  }, [selectedCameraId, isScanning, onScanSuccess, onScanError])
+  }, [selectedCameraId, isScanning, onScanSuccess, onScanError]);
 
-  // ---------- init ----------
+  // Initialize camera AFTER component mounts
   useEffect(() => {
-    mountedRef.current = true
+    mountedRef.current = true;
 
-    const initialize = async () => {
+    const initializeCamera = async () => {
+      if (!mountedRef.current) return;
+
       try {
-        setInitializationStatus('Preparing camera container…')
-        await new Promise(r => setTimeout(r, 60))
+        setInitializationStatus('Checking for camera access...');
 
-        const container = document.getElementById('reader')
-        if (!container) throw new Error('Scanner container not found')
+        // Ensure container exists
+        const readerElement = document.getElementById('reader');
+        if (!readerElement) {
+          throw new Error('Scanner container not found in DOM');
+        }
 
-        // clean any previous instance
+        // Clean any previous instance
         if (html5QrCodeRef.current) {
-          await stopScanner()
-          html5QrCodeRef.current = null
+          try {
+            await html5QrCodeRef.current.stop();
+          } catch {}
+          html5QrCodeRef.current = null;
         }
 
-        html5QrCodeRef.current = new Html5Qrcode('reader', /* verbose= */ false)
-        setInitializationStatus('Requesting camera access…')
+        html5QrCodeRef.current = new Html5Qrcode('reader');
 
-        const devices = await Html5Qrcode.getCameras()
-        if (!mountedRef.current) return
+        setInitializationStatus('Requesting camera permissions...');
+        const devices = await Html5Qrcode.getCameras();
 
-        if (!devices || devices.length === 0) {
-          throw new Error('No cameras found on this device')
+        if (!mountedRef.current) return;
+
+        if (devices.length) {
+          setCameras(devices);
+
+          // Prefer back/environment camera if label hints at it
+          const backCamera =
+            devices.find(d => /back|environment|rear/i.test(d.label)) ?? devices[0];
+
+          setSelectedCameraId(backCamera.id);
+          setIsInitialized(true);
+          setInitializationStatus('Camera ready!');
+        } else {
+          throw new Error('No cameras found on this device');
         }
-
-        setCameras(devices)
-
-        // prefer back/environment camera
-        const back = devices.find(d =>
-          /back|environment|rear/i.test(d.label || '')
-        ) || devices[0]
-
-        setSelectedCameraId(back.id)
-        setIsInitialized(true)
-        setInitializationStatus('Camera ready')
       } catch (err: any) {
-        console.error('Camera init error:', err)
+        console.error('Camera initialization error:', err);
         if (mountedRef.current) {
-          setError(err.message)
-          setInitializationStatus(`Error: ${err.message}`)
-          onScanError?.(err.message)
+          setError(err?.message || String(err));
+          setInitializationStatus(`Error: ${err?.message || String(err)}`);
+          onScanError?.(err?.message || String(err));
         }
       }
-    }
+    };
 
-    const t = setTimeout(initialize, 150)
+    const initTimeout = setTimeout(initializeCamera, 150);
+
     return () => {
-      mountedRef.current = false
-      clearTimeout(t)
-      clearInterval(cooldownInterval.current)
-      stopScanner()
-    }
-  }, [onScanError, stopScanner])
+      mountedRef.current = false;
+      clearTimeout(initTimeout);
+      if (cooldownInterval.current) clearInterval(cooldownInterval.current);
+      stopScanner();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // autostart when ready
+  // Auto-start when ready
   useEffect(() => {
     if (selectedCameraId && isInitialized && !isScanning && !error && mountedRef.current) {
-      startScanner()
+      startScanner();
     }
-  }, [selectedCameraId, isInitialized, isScanning, error, startScanner])
+  }, [selectedCameraId, isInitialized, isScanning, error, startScanner]);
 
   const handleCameraChange = async (id: string) => {
-    await stopScanner()
-    setSelectedCameraId(id)
-  }
+    await stopScanner();
+    setSelectedCameraId(id);
+  };
 
   const handleRetry = async () => {
-    setError(null)
-    setIsInitialized(false)
-    setInitializationStatus('Retrying…')
-    await stopScanner()
-    // soft re-init without full page reload
-    setTimeout(() => {
-      if (mountedRef.current) setIsInitialized(false)
-    }, 50)
-  }
+    setError(null);
+    setIsInitialized(false);
+    setInitializationStatus('Retrying...');
+    await stopScanner();
+    // Soft re-init without full reload
+    try {
+      if (html5QrCodeRef.current) {
+        await html5QrCodeRef.current.stop().catch(() => {});
+        html5QrCodeRef.current = null;
+      }
+      html5QrCodeRef.current = new Html5Qrcode('reader');
+      const devices = await Html5Qrcode.getCameras();
+      if (!devices.length) throw new Error('No cameras found on this device');
+      const backCamera =
+        devices.find(d => /back|environment|rear/i.test(d.label)) ?? devices[0];
+      setCameras(devices);
+      setSelectedCameraId(backCamera.id);
+      setIsInitialized(true);
+      setInitializationStatus('Camera ready!');
+    } catch (e: any) {
+      setError(e?.message || String(e));
+      onScanError?.(e?.message || String(e));
+    }
+  };
 
-  // ---------- UI ----------
   if (error) {
     return (
       <div className="p-4 bg-red-100 text-red-700 rounded">
         <div className="flex items-center mb-2">
-          <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
-            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+          <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+            <path
+              fillRule="evenodd"
+              d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+              clipRule="evenodd"
+            />
           </svg>
           <span className="font-medium">Camera Error</span>
         </div>
@@ -227,11 +230,12 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, o
           Retry
         </button>
       </div>
-    )
+    );
   }
 
   return (
     <div className="w-full">
+      {/* Initialization status */}
       {!isInitialized && (
         <div className="p-4 bg-blue-100 text-blue-700 rounded mb-4">
           <div className="flex items-center">
@@ -241,6 +245,58 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, o
         </div>
       )}
 
+      {/* Camera selection */}
       {cameras.length > 1 && isInitialized && (
         <div className="mb-4 p-3 bg-gray-50 rounded-lg">
           <label className="block text-sm font-medium text-gray-700 mb-2">
+            Select Camera:
+          </label>
+          <select
+            value={selectedCameraId}
+            onChange={e => handleCameraChange(e.target.value)}
+            className="w-full p-2 border border-gray-300 rounded-md focus:ring-orange-500 focus:border-orange-500"
+          >
+            {cameras.map(device => (
+              <option key={device.id} value={device.id}>
+                {device.label || `Camera ${device.id}`}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {/* Scanner container - ALWAYS rendered */}
+      <div
+        id="reader"
+        className="w-full rounded-lg overflow-hidden"
+        style={{
+          minHeight: '300px',
+          border: '2px solid #e5e7eb',
+          transition: 'border 0.3s ease',
+          backgroundColor: isInitialized ? 'black' : '#f3f4f6',
+        }}
+        // Html5Qrcode renders its own <video>; iOS likes inline playback on that element.
+      />
+
+      {/* Status messages */}
+      {cooldownRemaining > 0 && (
+        <div className="text-center mt-3 p-2 bg-orange-100 text-orange-800 rounded">
+          <span className="text-sm font-medium">Scan cooldown: {cooldownRemaining}s</span>
+        </div>
+      )}
+
+      {isScanning && (
+        <div className="text-center mt-3 text-sm text-gray-600">
+          <div className="flex items-center justify-center">
+            <div className="w-2 h-2 rounded-full mr-2 animate-pulse" style={{ background: '#22c55e' }}></div>
+            Point camera at barcode or QR code
+          </div>
+        </div>
+      )}
+
+      {!isScanning && isInitialized && (
+        <div className="text-center mt-3 text-sm text-gray-500">Camera ready - waiting for barcode</div>
+      )}
+    </div>
+  );
+};
