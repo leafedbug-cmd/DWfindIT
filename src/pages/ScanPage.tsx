@@ -10,13 +10,30 @@ import { useScanItemStore } from '../store/scanItemStore';
 import { useStore } from '../contexts/StoreContext';
 import { supabase } from '../services/supabase';
 
+// -------- Types --------
 type PartRow = {
+  kind: 'part';
   part_number: string;
   Part_Description?: string | null;
   bin_location?: string | null;
   store_location?: string | null;
   [k: string]: any;
 };
+
+type EquipmentRow = {
+  kind: 'equipment';
+  stock_number: string;
+  description?: string | null;
+  make?: string | null;
+  model?: string | null;
+  serial_number?: string | null;
+  customer_name?: string | null;
+  store_location?: string | null;
+  branch?: string | null;
+  [k: string]: any;
+};
+
+type ScanRow = PartRow | EquipmentRow;
 
 const OVERLAY_MS = 4000; // how long the overlay stays up
 
@@ -31,7 +48,7 @@ export const ScanPage: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [viewMode, setViewMode] = useState<'view' | 'add'>('view');
 
-  const [lastScannedPart, setLastScannedPart] = useState<PartRow | null>(null);
+  const [lastScanned, setLastScanned] = useState<ScanRow | null>(null);
   const [showOverlay, setShowOverlay] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
 
@@ -47,7 +64,7 @@ export const ScanPage: React.FC = () => {
     }
   }, [lists, currentList, setCurrentList]);
 
-  // Handle scan
+  // -------- Scan handler --------
   const handleScan = useCallback(
     async (barcode: string) => {
       if (isProcessing) return;
@@ -61,6 +78,7 @@ export const ScanPage: React.FC = () => {
 
         const { data: { user } } = await supabase.auth.getUser();
 
+        // 1) Try PARTS (by part_number + store)
         const { data: partData, error: partError } = await supabase
           .from('parts')
           .select('*')
@@ -68,59 +86,80 @@ export const ScanPage: React.FC = () => {
           .eq('store_location', selectedStore)
           .maybeSingle();
 
-        if (partError || !partData) {
-          throw new Error(`Part "${barcode}" not found in store ${selectedStore}.`);
-        }
+        if (partData) {
+          const part: PartRow = { kind: 'part', ...partData };
+          setLastScanned(part);
+          setShowOverlay(true);
+          setTimeout(() => setShowOverlay(false), OVERLAY_MS);
 
-        setLastScannedPart(partData as PartRow);
-        setShowOverlay(true);
-        // auto-hide overlay
-        setTimeout(() => setShowOverlay(false), OVERLAY_MS);
+          if (viewMode === 'view') {
+            setScanSuccess(`${part.part_number} → Bin: ${part.bin_location ?? '—'}`);
+            return;
+          }
 
-        if (viewMode === 'view') {
-          setScanSuccess(`${barcode} → Bin: ${partData.bin_location ?? '—'}`);
+          // ADD mode for parts
+          if (!currentList) throw new Error('No list selected.');
+
+          const { data: listCheck, error: listError } = await supabase
+            .from('lists')
+            .select('id, name, user_id')
+            .eq('id', currentList.id)
+            .single();
+
+          if (listError || !listCheck) throw new Error('List not found or access denied');
+          if (listCheck.user_id !== user?.id) throw new Error('You do not have permission to add items to this list');
+
+          const { data: existingItem } = await supabase
+            .from('scan_items')
+            .select('*')
+            .eq('barcode', barcode)
+            .eq('list_id', currentList.id)
+            .maybeSingle();
+
+          if (existingItem) {
+            const newQty = existingItem.quantity + 1;
+            const { error: updateError } = await supabase
+              .from('scan_items')
+              .update({ quantity: newQty })
+              .eq('id', existingItem.id);
+            if (updateError) throw updateError;
+            setScanSuccess(`Updated ${barcode} quantity to ${newQty}`);
+          } else {
+            const scanItemData = {
+              barcode,
+              part_number: part.part_number,
+              bin_location: part.bin_location,
+              store_location: part.store_location,
+              list_id: currentList.id,
+              quantity: 1,
+              notes: '',
+            };
+            await addItem(scanItemData);
+            setScanSuccess(`Added ${barcode} to list`);
+          }
           return;
         }
 
-        if (!currentList) throw new Error('No list selected.');
-
-        const { data: listCheck, error: listError } = await supabase
-          .from('lists')
-          .select('id, name, user_id')
-          .eq('id', currentList.id)
-          .single();
-
-        if (listError || !listCheck) throw new Error('List not found or access denied');
-        if (listCheck.user_id !== user?.id) throw new Error('You do not have permission to add items to this list');
-
-        const { data: existingItem } = await supabase
-          .from('scan_items')
+        // 2) Try EQUIPMENT (by stock_number)
+        const { data: equipData, error: equipError } = await supabase
+          .from('equipment') // <-- ensure this table name matches your DB
           .select('*')
-          .eq('barcode', barcode)
-          .eq('list_id', currentList.id)
+          .eq('stock_number', barcode)
           .maybeSingle();
 
-        if (existingItem) {
-          const newQty = existingItem.quantity + 1;
-          const { error: updateError } = await supabase
-            .from('scan_items')
-            .update({ quantity: newQty })
-            .eq('id', existingItem.id);
-          if (updateError) throw updateError;
-          setScanSuccess(`Updated ${barcode} quantity to ${newQty}`);
-        } else {
-          const scanItemData = {
-            barcode,
-            part_number: partData.part_number,
-            bin_location: partData.bin_location,
-            store_location: partData.store_location,
-            list_id: currentList.id,
-            quantity: 1,
-            notes: '',
-          };
-          await addItem(scanItemData);
-          setScanSuccess(`Added ${barcode} to list`);
+        if (equipData) {
+          const eq: EquipmentRow = { kind: 'equipment', ...equipData };
+          setLastScanned(eq);
+          setShowOverlay(true);
+          setTimeout(() => setShowOverlay(false), OVERLAY_MS);
+
+          // No list add for equipment (unless you want a separate equipment_scans table)
+          setScanSuccess(`${eq.stock_number} • ${eq.description ?? 'equipment'}`);
+          return;
         }
+
+        // Nothing found
+        throw new Error(`No part or equipment found for "${barcode}".`);
       } catch (error: any) {
         console.error('Scan processing error:', error);
         setScanError(error.message);
@@ -133,6 +172,7 @@ export const ScanPage: React.FC = () => {
     [isProcessing, selectedStore, viewMode, currentList, addItem]
   );
 
+  // Camera error
   const handleCameraError = useCallback((error: string) => {
     console.error('Camera error:', error);
     setCameraError(error);
@@ -178,29 +218,68 @@ export const ScanPage: React.FC = () => {
           {barcodeScannerComponent}
 
           {/* Compact HUD overlay */}
-          {showOverlay && lastScannedPart && (
+          {showOverlay && lastScanned && (
             <div
-              className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 w-[95%] max-w-xl 
-                         rounded-xl bg-black/70 text-white shadow-lg backdrop-blur-sm"
+              className={`pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 w-[95%] max-w-xl 
+                          rounded-xl text-white shadow-lg backdrop-blur-sm
+                          ${lastScanned.kind === 'part' ? 'bg-black/70' : 'bg-slate-900/70'}`}
             >
               <div className="px-3 py-2">
-                <div className="text-xs font-semibold tracking-wide opacity-90">
-                  {lastScannedPart.part_number}
-                </div>
-                <div className="text-[11px] opacity-90 line-clamp-2">
-                  {lastScannedPart.Part_Description ?? '—'}
-                </div>
-
-                <div className="mt-1 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
-                  <div>
-                    <span className="opacity-60">Bin:</span>{' '}
-                    <span className="font-medium">{lastScannedPart.bin_location ?? '—'}</span>
-                  </div>
-                  <div>
-                    <span className="opacity-60">Store:</span>{' '}
-                    <span className="font-medium">{lastScannedPart.store_location ?? '—'}</span>
-                  </div>
-                </div>
+                {lastScanned.kind === 'part' ? (
+                  <>
+                    <div className="text-xs font-semibold tracking-wide opacity-90">
+                      {(lastScanned as PartRow).part_number}
+                    </div>
+                    <div className="text-[11px] opacity-90 line-clamp-2">
+                      {(lastScanned as PartRow).Part_Description ?? '—'}
+                    </div>
+                    <div className="mt-1 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
+                      <div>
+                        <span className="opacity-60">Bin:</span>{' '}
+                        <span className="font-medium">{(lastScanned as PartRow).bin_location ?? '—'}</span>
+                      </div>
+                      <div>
+                        <span className="opacity-60">Store:</span>{' '}
+                        <span className="font-medium">{(lastScanned as PartRow).store_location ?? '—'}</span>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="text-xs font-semibold tracking-wide opacity-90">
+                      {(lastScanned as EquipmentRow).stock_number}
+                    </div>
+                    <div className="text-[11px] opacity-90 line-clamp-2">
+                      {(lastScanned as EquipmentRow).description ?? '—'}
+                    </div>
+                    <div className="mt-1 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
+                      <div>
+                        <span className="opacity-60">Make/Model:</span>{' '}
+                        <span className="font-medium">
+                          {[(lastScanned as EquipmentRow).make, (lastScanned as EquipmentRow).model]
+                            .filter(Boolean)
+                            .join(' ') || '—'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="opacity-60">Serial:</span>{' '}
+                        <span className="font-medium">{(lastScanned as EquipmentRow).serial_number ?? '—'}</span>
+                      </div>
+                      <div>
+                        <span className="opacity-60">Customer:</span>{' '}
+                        <span className="font-medium">{(lastScanned as EquipmentRow).customer_name ?? '—'}</span>
+                      </div>
+                      <div>
+                        <span className="opacity-60">Store/Branch:</span>{' '}
+                        <span className="font-medium">
+                          {[(lastScanned as EquipmentRow).store_location, (lastScanned as EquipmentRow).branch]
+                            .filter(Boolean)
+                            .join(' • ') || '—'}
+                        </span>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           )}
@@ -215,15 +294,16 @@ export const ScanPage: React.FC = () => {
         {scanError && <div className="p-2 bg-red-100 text-red-800 rounded">{scanError}</div>}
         {scanSuccess && <div className="p-2 bg-green-100 text-green-800 rounded">{scanSuccess}</div>}
 
-        {/* (Optional) Result panel you already had */}
+        {/* Keep existing result panel for PARTS only */}
         <ScanResult
-          item={lastScannedPart as any}
+          item={lastScanned?.kind === 'part' ? (lastScanned as PartRow) : (null as any)}
           isLoading={isProcessing}
           error={scanError}
           clearResult={clearRecentScan}
           onSave={(updates) => {
-            if (lastScannedPart) {
-              addItem({ ...lastScannedPart, ...updates });
+            if (lastScanned?.kind === 'part') {
+              const p = lastScanned as PartRow;
+              addItem({ ...p, ...updates });
             }
           }}
         />
