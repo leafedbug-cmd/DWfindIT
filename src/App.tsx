@@ -9,12 +9,12 @@ import { ListsPage } from './pages/ListsPage';
 import { ListDetailPage } from './pages/ListDetailPage';
 import { ScanPage } from './pages/ScanPage';
 import { ProfilePage } from './pages/ProfilePage';
-import { InventoryPage } from './pages/InventoryPage'; // <-- Correctly Imported
+import { InventoryPage } from './pages/InventoryPage';
+import { WorkOrderPage } from './pages/WorkOrderPage';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, isLoading } = useAuthStore();
 
-  // Show loading indicator while checking auth state
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-50">
@@ -23,7 +23,6 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
     );
   }
 
-  // Redirect to login if not authenticated
   if (!user) {
     return <Navigate to="/login" replace />;
   }
@@ -89,12 +88,20 @@ function App() {
             }
           />
 
-          {/* Correctly Added Route */}
           <Route
             path="/inventory"
             element={
               <ProtectedRoute>
                 <InventoryPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/work-order"
+            element={
+              <ProtectedRoute>
+                <WorkOrderPage />
               </ProtectedRoute>
             }
           />
