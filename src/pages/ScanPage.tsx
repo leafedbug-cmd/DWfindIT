@@ -15,8 +15,6 @@ type PartRow = {
   Part_Description?: string | null;
   bin_location?: string | null;
   store_location?: string | null;
-  created_at?: string | null;
-  updated_at?: string | null;
   [k: string]: any;
 };
 
@@ -48,10 +46,6 @@ export const ScanPage: React.FC = () => {
       setCurrentList(lists[0]);
     }
   }, [lists, currentList, setCurrentList]);
-
-  // Util: pretty timestamps
-  const fmt = (ts?: string | null) =>
-    ts ? new Date(ts).toLocaleString() : '—';
 
   // Handle scan
   const handleScan = useCallback(
@@ -205,14 +199,6 @@ export const ScanPage: React.FC = () => {
                   <div>
                     <span className="opacity-60">Store:</span>{' '}
                     <span className="font-medium">{lastScannedPart.store_location ?? '—'}</span>
-                  </div>
-                  <div className="opacity-80">
-                    <span className="opacity-60">Created:</span>{' '}
-                    {fmt(lastScannedPart.created_at)}
-                  </div>
-                  <div className="opacity-80">
-                    <span className="opacity-60">Updated:</span>{' '}
-                    {fmt(lastScannedPart.updated_at)}
                   </div>
                 </div>
               </div>
