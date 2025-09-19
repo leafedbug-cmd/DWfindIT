@@ -8,8 +8,8 @@ import { X, Scan } from "lucide-react";
 
 type Equipment = {
   id: string;
-  stock_no: string;
-  serial_no: string | null;
+  stock_number: string | null;
+  serial_number: string | null;
   model: string | null;
   manufacturer: string | null;
   last_hourmeter: number | null;
@@ -21,7 +21,7 @@ export const WorkOrderPage: React.FC = () => {
   const [equip, setEquip] = useState<Equipment | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
-  // fields you’ll type later (just placeholders for now)
+  // manual fields (we’ll wire save later)
   const [contactName, setContactName] = useState("");
   const [contactPhone, setContactPhone] = useState("");
   const [jobLocation, setJobLocation] = useState("");
@@ -42,24 +42,25 @@ export const WorkOrderPage: React.FC = () => {
     return () => { void cleanupScanner(); };
   }, []);
 
-  // --- lookup that accepts stock_no or serial_no ----------------------------
+  // --- lookup that accepts stock_number OR serial_number ---------------------
   const fetchEquipmentByCode = async (codeRaw: string) => {
     const code = codeRaw.trim();
-    // 1) try stock_no
+
+    // 1) try stock_number
     let { data, error } = await supabase
       .from("equipment")
-      .select("id, stock_no, serial_no, model, manufacturer, last_hourmeter, customer_id")
-      .eq("stock_no", code)
+      .select("id, stock_number, serial_number, model, manufacturer, last_hourmeter, customer_id")
+      .eq("stock_number", code)
       .maybeSingle();
 
     if (error) return { data: null as any, error };
 
     if (!data) {
-      // 2) try serial_no
+      // 2) try serial_number
       const res2 = await supabase
         .from("equipment")
-        .select("id, stock_no, serial_no, model, manufacturer, last_hourmeter, customer_id")
-        .eq("serial_no", code)
+        .select("id, stock_number, serial_number, model, manufacturer, last_hourmeter, customer_id")
+        .eq("serial_number", code)
         .maybeSingle();
       return { data: res2.data as any, error: res2.error as any };
     }
@@ -129,18 +130,58 @@ export const WorkOrderPage: React.FC = () => {
 
         {/* auto-filled equipment fields */}
         <div className="grid md:grid-cols-2 gap-4">
-          <input className="w-full px-3 py-2 rounded border bg-white" placeholder="Manufacturer" value={equip?.manufacturer ?? ""} readOnly />
-          <input className="w-full px-3 py-2 rounded border bg-white" placeholder="Model" value={equip?.model ?? ""} readOnly />
-          <input className="w-full px-3 py-2 rounded border bg-white" placeholder="Serial #" value={equip?.serial_no ?? ""} readOnly />
-          <input className="w-full px-3 py-2 rounded border bg-white" placeholder="Customer Equipment #" value={equip?.stock_no ?? ""} readOnly />
+          <input
+            className="w-full px-3 py-2 rounded border bg-white"
+            placeholder="Manufacturer"
+            value={equip?.manufacturer ?? ""}
+            readOnly
+          />
+          <input
+            className="w-full px-3 py-2 rounded border bg-white"
+            placeholder="Model"
+            value={equip?.model ?? ""}
+            readOnly
+          />
+          <input
+            className="w-full px-3 py-2 rounded border bg-white"
+            placeholder="Serial #"
+            value={equip?.serial_number ?? ""}
+            readOnly
+          />
+          <input
+            className="w-full px-3 py-2 rounded border bg-white"
+            placeholder="Customer Equipment # (Stock #)"
+            value={equip?.stock_number ?? ""}
+            readOnly
+          />
         </div>
 
-        {/* manual fields (we’ll wire save later) */}
+        {/* manual fields (save wiring comes later) */}
         <div className="grid md:grid-cols-2 gap-4">
-          <input className="w-full px-3 py-2 rounded border bg-white" placeholder="Contact Name" value={contactName} onChange={e=>setContactName(e.target.value)} />
-          <input className="w-full px-3 py-2 rounded border bg-white" placeholder="Contact Phone" value={contactPhone} onChange={e=>setContactPhone(e.target.value)} />
-          <input className="w-full px-3 py-2 rounded border bg-white md:col-span-2" placeholder="Job Location (optional)" value={jobLocation} onChange={e=>setJobLocation(e.target.value)} />
-          <textarea className="w-full px-3 py-2 rounded border bg-white md:col-span-2 h-28" placeholder="Instructions" value={instructions} onChange={e=>setInstructions(e.target.value)} />
+          <input
+            className="w-full px-3 py-2 rounded border bg-white"
+            placeholder="Contact Name"
+            value={contactName}
+            onChange={e=>setContactName(e.target.value)}
+          />
+          <input
+            className="w-full px-3 py-2 rounded border bg-white"
+            placeholder="Contact Phone"
+            value={contactPhone}
+            onChange={e=>setContactPhone(e.target.value)}
+          />
+          <input
+            className="w-full px-3 py-2 rounded border bg-white md:col-span-2"
+            placeholder="Job Location (optional)"
+            value={jobLocation}
+            onChange={e=>setJobLocation(e.target.value)}
+          />
+          <textarea
+            className="w-full px-3 py-2 rounded border bg-white md:col-span-2 h-28"
+            placeholder="Instructions"
+            value={instructions}
+            onChange={e=>setInstructions(e.target.value)}
+          />
         </div>
 
         {err && <div className="p-3 bg-red-100 border border-red-400 text-red-700 rounded">{err}</div>}
@@ -162,7 +203,7 @@ export const WorkOrderPage: React.FC = () => {
               style={{ minHeight: 220 }}
             />
             <p className="text-xs text-gray-500 mt-2">
-              Point the camera at the equipment barcode (stock # or serial #).
+              Point the camera at the equipment barcode (stock number or serial number).
             </p>
           </div>
         </div>
