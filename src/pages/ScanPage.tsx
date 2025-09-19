@@ -13,9 +13,9 @@ import { Package, Tag } from 'lucide-react';
 
 export interface UnifiedScanResult {
   type: 'part' | 'equipment';
-  id: string;
-  primaryIdentifier: string;
-  secondaryIdentifier: string;
+  id: string;                       // part.id or equipment.stock_number
+  primaryIdentifier: string;        // part_number or stock_number
+  secondaryIdentifier: string;      // bin_location or make/model
   barcode: string;
   store_location: string;
   description?: string | null;
@@ -38,17 +38,19 @@ export const ScanPage: React.FC = () => {
   const { lists, fetchLists, currentList, setCurrentList } = useListStore();
   const { addItem, error: itemError, isLoading: isItemLoading } = useScanItemStore();
 
+  // URL params
   const [params] = useSearchParams();
   const preselectListId = params.get('list');
   const autoStart = params.get('auto') === '1';
 
+  // UI state
   const [scanError, setScanError] = useState<string | null>(null);
   const [scanSuccess, setScanSuccess] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [lastScannedItem, setLastScannedItem] = useState<UnifiedScanResult | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
 
-  // --- Scan handler ---
+  // --- Scan handler (parts first, then equipment by stock OR serial) ---
   const handleScan = useCallback(
     async (barcode: string) => {
       if (isProcessing) return;
@@ -58,7 +60,7 @@ export const ScanPage: React.FC = () => {
       setScanSuccess(null);
 
       try {
-        // 1) parts by part_number (store-limited)
+        // 1) parts (scoped to store)
         const { data: partData, error: partError } = await supabase
           .from('parts')
           .select('*')
@@ -82,7 +84,7 @@ export const ScanPage: React.FC = () => {
           return;
         }
 
-        // 2) equipment by stock OR serial (not store-limited)
+        // 2) equipment (NOT store-limited) — match stock_number OR serial_number
         const { data: equipmentData, error: equipmentError } = await supabase
           .from('equipment')
           .select('*')
@@ -119,6 +121,7 @@ export const ScanPage: React.FC = () => {
           return;
         }
 
+        // Not found anywhere
         throw new Error(
           `Item "${barcode}" not found in parts (store ${selectedStore}) or equipment (by stock # or serial #).`
         );
@@ -132,7 +135,7 @@ export const ScanPage: React.FC = () => {
     [isProcessing, selectedStore]
   );
 
-  // Save handler
+  // Save to list (manual qty from ScanResult)
   const handleSaveItem = async (updates: { quantity: number; notes: string }) => {
     if (!lastScannedItem) {
       setScanError('Nothing to save yet — scan an item first.');
@@ -151,7 +154,7 @@ export const ScanPage: React.FC = () => {
     const newItemData = {
       list_id: targetListId,
       barcode: lastScannedItem.barcode,
-      part_number: lastScannedItem.primaryIdentifier,
+      part_number: lastScannedItem.primaryIdentifier, // stock_number for equipment
       bin_location: lastScannedItem.type === 'part' ? lastScannedItem.secondaryIdentifier : 'N/A',
       store_location: lastScannedItem.store_location ?? 'N/A',
       quantity: updates.quantity,
@@ -161,23 +164,19 @@ export const ScanPage: React.FC = () => {
     const addedItem = await addItem(newItemData);
 
     if (addedItem) {
-      setScanSuccess(
-        `Added ${updates.quantity} "${newItemData.part_number}" to "${targetListName}" ✅`
-      );
+      setScanSuccess(`Added ${updates.quantity} "${newItemData.part_number}" to "${targetListName}" ✅`);
       setLastScannedItem(null);
       setTimeout(() => setScanSuccess(null), 3000);
     }
   };
 
-  const handleCameraError = useCallback((error: string) => setCameraError(error), []);
-
-  // Overlay card (quick summary in camera preview)
+  // overlay summary inside camera preview
   const overlayCard = useMemo(() => {
     if (!lastScannedItem) return null;
 
     const Row = ({ label, value }: { label: string; value?: string | number | null }) =>
       !value ? null : (
-        <div className="flex items-baseline justify-between gap-3 text-xs sm:text-sm px-3 py-1">
+        <div className="flex items-baseline justify-between gap-3 text-[11px] sm:text-xs px-3 py-1">
           <span className="text-gray-600">{label}</span>
           <span className="font-semibold text-gray-900 text-right">{String(value)}</span>
         </div>
@@ -185,18 +184,18 @@ export const ScanPage: React.FC = () => {
 
     const badge =
       lastScannedItem.type === 'part' ? (
-        <span className="inline-flex items-center text-[11px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
+        <span className="inline-flex items-center text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
           <Package className="h-3 w-3 mr-1" /> Part
         </span>
       ) : (
-        <span className="inline-flex items-center text-[11px] px-2 py-0.5 rounded-full bg-green-100 text-green-800">
+        <span className="inline-flex items-center text-[10px] px-2 py-0.5 rounded-full bg-green-100 text-green-800">
           <Tag className="h-3 w-3 mr-1" /> Equipment
         </span>
       );
 
     return (
-      <div className="p-2">
-        <div className="flex items-center justify-between px-3 pt-2">{badge}</div>
+      <div className="p-1.5">
+        <div className="flex items-center justify-between px-3 pt-1.5">{badge}</div>
         {lastScannedItem.type === 'part' ? (
           <>
             <Row label="Part Number" value={lastScannedItem.primaryIdentifier} />
@@ -213,25 +212,36 @@ export const ScanPage: React.FC = () => {
     );
   }, [lastScannedItem]);
 
-  const barcodeScannerComponent = useMemo(
-    () => (
-      <BarcodeScanner
-        autoStart={autoStart}
-        overlay={overlayCard}
-        onScanSuccess={handleScan}
-        onScanError={setCameraError}
-      />
-    ),
-    [handleScan, autoStart, overlayCard]
+  // slim status “toasts”
+  const StatusPills = (
+    <div className="space-y-1">
+      {cameraError && (
+        <p className="inline-flex items-center px-2 py-1 text-xs rounded bg-yellow-100 text-yellow-800">
+          {cameraError}
+        </p>
+      )}
+      {(scanError || itemError) && (
+        <p className="inline-flex items-center px-2 py-1 text-xs rounded bg-red-100 text-red-800">
+          {scanError || itemError}
+        </p>
+      )}
+      {scanSuccess && (
+        <p className="inline-flex items-center px-2 py-1 text-xs rounded bg-green-100 text-green-800">
+          {scanSuccess}
+        </p>
+      )}
+    </div>
   );
 
-  const displayError = scanError || itemError;
-  const displayLoading = isProcessing || isItemLoading;
+  // hook up camera error
+  const handleCameraError = useCallback((err: string) => setCameraError(err), []);
 
+  // load lists
   useEffect(() => {
     if (lists.length === 0) fetchLists();
   }, [lists.length, fetchLists]);
 
+  // if list=... present, prefer it; otherwise leave selection alone
   useEffect(() => {
     if (lists.length === 0) return;
     if (preselectListId) {
@@ -246,44 +256,38 @@ export const ScanPage: React.FC = () => {
     <div className="min-h-screen flex flex-col pb-16 bg-gray-50">
       <Header title="Scan Item" showBackButton />
 
-      <main className="flex-1 p-4 space-y-4">
+      <main className="flex-1 p-3 space-y-3">
+        {/* saving target hint */}
         {currentList ? (
-          <div className="text-xs bg-zinc-100 text-zinc-700 px-2 py-1 rounded w-fit">
+          <div className="text-[11px] bg-zinc-100 text-zinc-700 px-2 py-0.5 rounded w-fit">
             Saving to: <span className="font-medium">{currentList.name}</span>
           </div>
         ) : (
-          <div className="text-xs bg-amber-100 text-amber-800 px-2 py-1 rounded w-fit">
+          <div className="text-[11px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded w-fit">
             No list selected — scans work, but you’ll need a list to{' '}
-            <button className="underline font-medium" onClick={() => navigate('/lists')}>
-              save
-            </button>
-            .
+            <button className="underline font-medium" onClick={() => navigate('/lists')}>save</button>.
           </div>
         )}
 
-        {barcodeScannerComponent}
+        {/* camera with overlay */}
+        <BarcodeScanner
+          autoStart={autoStart}
+          overlay={overlayCard}
+          onScanSuccess={handleScan}
+          onScanError={handleCameraError}
+        />
 
-        <div className="space-y-2">
-          {cameraError && (
-            <p className="p-3 text-center text-sm bg-yellow-100 text-yellow-800 rounded-lg">
-              Camera Error: {cameraError}
-            </p>
-          )}
-          {displayError && (
-            <p className="p-3 text-center text-sm bg-red-100 text-red-800 rounded-lg">{displayError}</p>
-          )}
-          {scanSuccess && (
-            <p className="p-3 text-center text-sm bg-green-100 text-green-800 rounded-lg">{scanSuccess}</p>
-          )}
-        </div>
+        {StatusPills}
 
+        {/* compact controls (quantity / save / clear) */}
         <ScanResult
           item={lastScannedItem}
-          isLoading={displayLoading}
+          isLoading={isProcessing || isItemLoading}
           onSave={handleSaveItem}
           onClear={() => {
             setLastScannedItem(null);
             setScanError(null);
+            setScanSuccess(null);
           }}
         />
       </main>
