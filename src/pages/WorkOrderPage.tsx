@@ -42,6 +42,31 @@ export const WorkOrderPage: React.FC = () => {
     return () => { void cleanupScanner(); };
   }, []);
 
+  // --- lookup that accepts stock_no or serial_no ----------------------------
+  const fetchEquipmentByCode = async (codeRaw: string) => {
+    const code = codeRaw.trim();
+    // 1) try stock_no
+    let { data, error } = await supabase
+      .from("equipment")
+      .select("id, stock_no, serial_no, model, manufacturer, last_hourmeter, customer_id")
+      .eq("stock_no", code)
+      .maybeSingle();
+
+    if (error) return { data: null as any, error };
+
+    if (!data) {
+      // 2) try serial_no
+      const res2 = await supabase
+        .from("equipment")
+        .select("id, stock_no, serial_no, model, manufacturer, last_hourmeter, customer_id")
+        .eq("serial_no", code)
+        .maybeSingle();
+      return { data: res2.data as any, error: res2.error as any };
+    }
+
+    return { data: data as any, error: null as any };
+  };
+
   const startScan = async () => {
     setErr(null);
     const elId = "wo-scan";
@@ -61,15 +86,13 @@ export const WorkOrderPage: React.FC = () => {
       { fps: 10, qrbox: { width: 250, height: 250 } },
       async (decodedText) => {
         try {
-          // barcode == equipment.stock_no
-          const { data, error } = await supabase
-            .from("equipment")
-            .select("id, stock_no, serial_no, model, manufacturer, last_hourmeter, customer_id")
-            .eq("stock_no", decodedText.trim())
-            .maybeSingle();
-
+          const { data, error } = await fetchEquipmentByCode(decodedText);
           if (error) { setErr(error.message); setEquip(null); return; }
-          if (!data) { setErr(`No equipment for stock # ${decodedText}`); setEquip(null); return; }
+          if (!data) {
+            setErr(`No equipment found for code: ${decodedText}`);
+            setEquip(null);
+            return;
+          }
 
           setEquip(data as Equipment);
           setErr(null);
@@ -138,7 +161,9 @@ export const WorkOrderPage: React.FC = () => {
               className="w-full border-2 border-dashed border-gray-300 rounded-lg bg-gray-50"
               style={{ minHeight: 220 }}
             />
-            <p className="text-xs text-gray-500 mt-2">Point the camera at the equipment barcode (stock #).</p>
+            <p className="text-xs text-gray-500 mt-2">
+              Point the camera at the equipment barcode (stock # or serial #).
+            </p>
           </div>
         </div>
       )}
