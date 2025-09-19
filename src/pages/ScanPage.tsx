@@ -1,6 +1,6 @@
 // src/pages/ScanPage.tsx
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { BarcodeScanner } from '../components/BarcodeScanner';
 import { ScanResult } from '../components/ScanResult';
 import { Header } from '../components/Header';
@@ -9,58 +9,64 @@ import { useListStore } from '../store/listStore';
 import { useScanItemStore } from '../store/scanItemStore';
 import { useStore } from '../contexts/StoreContext';
 import { supabase } from '../services/supabase';
-import { Package, Tag } from 'lucide-react';
 
-export interface UnifiedScanResult {
-  type: 'part' | 'equipment';
-  id: string;                       // part.id or equipment.stock_number
-  primaryIdentifier: string;        // part_number or stock_number
-  secondaryIdentifier: string;      // bin_location or make/model
-  barcode: string;
-  store_location: string;
-  description?: string | null;
-  equipmentDetails?: {
-    customer_name?: string | null;
-    model?: string | null;
-    make?: string | null;
-    serial_number?: string | null;
-    invoice_number?: string | null;
-    branch?: string | null;
-    model_year?: string | number | null;
-    internal_unit_y_or_n?: string | boolean | null;
-  };
-}
+type PartRow = {
+  part_number: string;
+  Part_Description?: string | null;
+  bin_location?: string | null;
+  store_location?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  [k: string]: any;
+};
+
+const OVERLAY_MS = 4000; // how long the overlay stays up
 
 export const ScanPage: React.FC = () => {
-  const { selectedStore } = useStore();
   const navigate = useNavigate();
-
+  const { selectedStore, isLoading: isStoreLoading } = useStore();
   const { lists, fetchLists, currentList, setCurrentList } = useListStore();
-  const { addItem, error: itemError, isLoading: isItemLoading } = useScanItemStore();
+  const { addItem, clearRecentScan } = useScanItemStore();
 
-  // URL params
-  const [params] = useSearchParams();
-  const preselectListId = params.get('list');
-  const autoStart = params.get('auto') === '1';
-
-  // UI state
   const [scanError, setScanError] = useState<string | null>(null);
   const [scanSuccess, setScanSuccess] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [lastScannedItem, setLastScannedItem] = useState<UnifiedScanResult | null>(null);
+  const [viewMode, setViewMode] = useState<'view' | 'add'>('view');
+
+  const [lastScannedPart, setLastScannedPart] = useState<PartRow | null>(null);
+  const [showOverlay, setShowOverlay] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
 
-  // --- Scan handler (parts first, then equipment by stock OR serial) ---
+  // Load lists on mount
+  useEffect(() => {
+    if (lists.length === 0) fetchLists();
+  }, [lists, fetchLists]);
+
+  // Set default list
+  useEffect(() => {
+    if (lists.length > 0 && !currentList) {
+      setCurrentList(lists[0]);
+    }
+  }, [lists, currentList, setCurrentList]);
+
+  // Util: pretty timestamps
+  const fmt = (ts?: string | null) =>
+    ts ? new Date(ts).toLocaleString() : '—';
+
+  // Handle scan
   const handleScan = useCallback(
     async (barcode: string) => {
       if (isProcessing) return;
 
-      setIsProcessing(true);
+      console.log('📷 Processing barcode scan:', barcode);
       setScanError(null);
       setScanSuccess(null);
 
       try {
-        // 1) parts (scoped to store)
+        setIsProcessing(true);
+
+        const { data: { user } } = await supabase.auth.getUser();
+
         const { data: partData, error: partError } = await supabase
           .from('parts')
           .select('*')
@@ -68,226 +74,171 @@ export const ScanPage: React.FC = () => {
           .eq('store_location', selectedStore)
           .maybeSingle();
 
-        if (partError) throw partError;
+        if (partError || !partData) {
+          throw new Error(`Part "${barcode}" not found in store ${selectedStore}.`);
+        }
 
-        if (partData) {
-          setScanSuccess(`Part Found: ${partData.part_number}`);
-          setLastScannedItem({
-            type: 'part',
-            id: partData.id,
-            primaryIdentifier: partData.part_number,
-            secondaryIdentifier: partData.bin_location,
-            barcode,
-            store_location: partData.store_location,
-            description: partData.description,
-          });
+        setLastScannedPart(partData as PartRow);
+        setShowOverlay(true);
+        // auto-hide overlay
+        setTimeout(() => setShowOverlay(false), OVERLAY_MS);
+
+        if (viewMode === 'view') {
+          setScanSuccess(`${barcode} → Bin: ${partData.bin_location ?? '—'}`);
           return;
         }
 
-        // 2) equipment (NOT store-limited) — match stock_number OR serial_number
-        const { data: equipmentData, error: equipmentError } = await supabase
-          .from('equipment')
+        if (!currentList) throw new Error('No list selected.');
+
+        const { data: listCheck, error: listError } = await supabase
+          .from('lists')
+          .select('id, name, user_id')
+          .eq('id', currentList.id)
+          .single();
+
+        if (listError || !listCheck) throw new Error('List not found or access denied');
+        if (listCheck.user_id !== user?.id) throw new Error('You do not have permission to add items to this list');
+
+        const { data: existingItem } = await supabase
+          .from('scan_items')
           .select('*')
-          .or(`stock_number.eq.${barcode},serial_number.eq.${barcode}`)
+          .eq('barcode', barcode)
+          .eq('list_id', currentList.id)
           .maybeSingle();
 
-        if (equipmentError) throw equipmentError;
-
-        if (equipmentData) {
-          setScanSuccess(
-            `Equipment Found: ${equipmentData.stock_number}${
-              equipmentData.serial_number ? ` (SN: ${equipmentData.serial_number})` : ''
-            }`
-          );
-          setLastScannedItem({
-            type: 'equipment',
-            id: equipmentData.stock_number,
-            primaryIdentifier: equipmentData.stock_number,
-            secondaryIdentifier: `${equipmentData.make || ''} ${equipmentData.model || ''}`.trim(),
+        if (existingItem) {
+          const newQty = existingItem.quantity + 1;
+          const { error: updateError } = await supabase
+            .from('scan_items')
+            .update({ quantity: newQty })
+            .eq('id', existingItem.id);
+          if (updateError) throw updateError;
+          setScanSuccess(`Updated ${barcode} quantity to ${newQty}`);
+        } else {
+          const scanItemData = {
             barcode,
-            store_location: equipmentData.store_location ?? equipmentData.branch ?? 'N/A',
-            description: equipmentData.description,
-            equipmentDetails: {
-              customer_name: equipmentData.customer_name ?? null,
-              model: equipmentData.model ?? null,
-              make: equipmentData.make ?? null,
-              serial_number: equipmentData.serial_number ?? null,
-              invoice_number: equipmentData.invoice_number ?? null,
-              branch: (equipmentData.branch ?? equipmentData.store_location) ?? null,
-              model_year: equipmentData.model_year ?? null,
-              internal_unit_y_or_n: equipmentData.internal_unit_y_or_n ?? null,
-            },
-          });
-          return;
+            part_number: partData.part_number,
+            bin_location: partData.bin_location,
+            store_location: partData.store_location,
+            list_id: currentList.id,
+            quantity: 1,
+            notes: '',
+          };
+          await addItem(scanItemData);
+          setScanSuccess(`Added ${barcode} to list`);
         }
-
-        // Not found anywhere
-        throw new Error(
-          `Item "${barcode}" not found in parts (store ${selectedStore}) or equipment (by stock # or serial #).`
-        );
-      } catch (err) {
-        console.error('Scan processing error:', err);
-        setScanError(err instanceof Error ? err.message : String(err));
+      } catch (error: any) {
+        console.error('Scan processing error:', error);
+        setScanError(error.message);
       } finally {
         setIsProcessing(false);
+        setTimeout(() => setScanError(null), 3000);
+        setTimeout(() => setScanSuccess(null), 3000);
       }
     },
-    [isProcessing, selectedStore]
+    [isProcessing, selectedStore, viewMode, currentList, addItem]
   );
 
-  // Save to list (manual qty from ScanResult)
-  const handleSaveItem = async (updates: { quantity: number; notes: string }) => {
-    if (!lastScannedItem) {
-      setScanError('Nothing to save yet — scan an item first.');
-      return;
-    }
-    if (!currentList && !preselectListId) {
-      setScanError('No list selected. Create or choose a list to save items.');
-      return;
-    }
+  const handleCameraError = useCallback((error: string) => {
+    console.error('Camera error:', error);
+    setCameraError(error);
+    setTimeout(() => setCameraError(null), 5000);
+  }, []);
 
-    const targetListId = preselectListId ?? currentList!.id;
-    const targetList =
-      (preselectListId ? lists.find((l) => l.id === preselectListId) : currentList) ?? null;
-    const targetListName = targetList?.name ?? `List ${targetListId}`;
+  const barcodeScannerComponent = useMemo(
+    () => <BarcodeScanner onScanSuccess={handleScan} onScanError={handleCameraError} />,
+    [handleScan, handleCameraError]
+  );
 
-    const newItemData = {
-      list_id: targetListId,
-      barcode: lastScannedItem.barcode,
-      part_number: lastScannedItem.primaryIdentifier, // stock_number for equipment
-      bin_location: lastScannedItem.type === 'part' ? lastScannedItem.secondaryIdentifier : 'N/A',
-      store_location: lastScannedItem.store_location ?? 'N/A',
-      quantity: updates.quantity,
-      notes: updates.notes,
-    };
-
-    const addedItem = await addItem(newItemData);
-
-    if (addedItem) {
-      setScanSuccess(`Added ${updates.quantity} "${newItemData.part_number}" to "${targetListName}" ✅`);
-      setLastScannedItem(null);
-      setTimeout(() => setScanSuccess(null), 3000);
-    }
-  };
-
-  // overlay summary inside camera preview
-  const overlayCard = useMemo(() => {
-    if (!lastScannedItem) return null;
-
-    const Row = ({ label, value }: { label: string; value?: string | number | null }) =>
-      !value ? null : (
-        <div className="flex items-baseline justify-between gap-3 text-[11px] sm:text-xs px-3 py-1">
-          <span className="text-gray-600">{label}</span>
-          <span className="font-semibold text-gray-900 text-right">{String(value)}</span>
-        </div>
-      );
-
-    const badge =
-      lastScannedItem.type === 'part' ? (
-        <span className="inline-flex items-center text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
-          <Package className="h-3 w-3 mr-1" /> Part
-        </span>
-      ) : (
-        <span className="inline-flex items-center text-[10px] px-2 py-0.5 rounded-full bg-green-100 text-green-800">
-          <Tag className="h-3 w-3 mr-1" /> Equipment
-        </span>
-      );
-
+  if (isStoreLoading) {
     return (
-      <div className="p-1.5">
-        <div className="flex items-center justify-between px-3 pt-1.5">{badge}</div>
-        {lastScannedItem.type === 'part' ? (
-          <>
-            <Row label="Part Number" value={lastScannedItem.primaryIdentifier} />
-            <Row label="Bin Location" value={lastScannedItem.secondaryIdentifier} />
-          </>
-        ) : (
-          <>
-            <Row label="Stock #" value={lastScannedItem.primaryIdentifier} />
-            <Row label="Serial #" value={lastScannedItem.equipmentDetails?.serial_number ?? undefined} />
-            <Row label="Branch" value={lastScannedItem.equipmentDetails?.branch ?? undefined} />
-          </>
-        )}
+      <div className="flex items-center justify-center min-h-screen">
+        <p>Loading store settings...</p>
       </div>
     );
-  }, [lastScannedItem]);
-
-  // slim status “toasts”
-  const StatusPills = (
-    <div className="space-y-1">
-      {cameraError && (
-        <p className="inline-flex items-center px-2 py-1 text-xs rounded bg-yellow-100 text-yellow-800">
-          {cameraError}
-        </p>
-      )}
-      {(scanError || itemError) && (
-        <p className="inline-flex items-center px-2 py-1 text-xs rounded bg-red-100 text-red-800">
-          {scanError || itemError}
-        </p>
-      )}
-      {scanSuccess && (
-        <p className="inline-flex items-center px-2 py-1 text-xs rounded bg-green-100 text-green-800">
-          {scanSuccess}
-        </p>
-      )}
-    </div>
-  );
-
-  // hook up camera error
-  const handleCameraError = useCallback((err: string) => setCameraError(err), []);
-
-  // load lists
-  useEffect(() => {
-    if (lists.length === 0) fetchLists();
-  }, [lists.length, fetchLists]);
-
-  // if list=... present, prefer it; otherwise leave selection alone
-  useEffect(() => {
-    if (lists.length === 0) return;
-    if (preselectListId) {
-      const match = lists.find((l) => l.id === preselectListId);
-      if (match && (!currentList || currentList.id !== match.id)) {
-        setCurrentList?.(match);
-      }
-    }
-  }, [lists, currentList, setCurrentList, preselectListId]);
+  }
 
   return (
     <div className="min-h-screen flex flex-col pb-16 bg-gray-50">
-      <Header title="Scan Item" showBackButton />
+      <Header title="Scan Barcode" showBackButton />
 
-      <main className="flex-1 p-3 space-y-3">
-        {/* saving target hint */}
-        {currentList ? (
-          <div className="text-[11px] bg-zinc-100 text-zinc-700 px-2 py-0.5 rounded w-fit">
-            Saving to: <span className="font-medium">{currentList.name}</span>
-          </div>
-        ) : (
-          <div className="text-[11px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded w-fit">
-            No list selected — scans work, but you’ll need a list to{' '}
-            <button className="underline font-medium" onClick={() => navigate('/lists')}>save</button>.
-          </div>
+      <main className="flex-1 p-4 space-y-4">
+        {/* Mode Toggle */}
+        <div className="flex space-x-4">
+          <button
+            className={viewMode === 'view' ? 'font-bold text-orange-600' : 'text-gray-600'}
+            onClick={() => setViewMode('view')}
+          >
+            View
+          </button>
+          <button
+            className={viewMode === 'add' ? 'font-bold text-orange-600' : 'text-gray-600'}
+            onClick={() => setViewMode('add')}
+          >
+            Add to List
+          </button>
+        </div>
+
+        {/* Scanner with overlay container */}
+        <div className="relative">
+          {barcodeScannerComponent}
+
+          {/* Compact HUD overlay */}
+          {showOverlay && lastScannedPart && (
+            <div
+              className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 w-[95%] max-w-xl 
+                         rounded-xl bg-black/70 text-white shadow-lg backdrop-blur-sm"
+            >
+              <div className="px-3 py-2">
+                <div className="text-xs font-semibold tracking-wide opacity-90">
+                  {lastScannedPart.part_number}
+                </div>
+                <div className="text-[11px] opacity-90 line-clamp-2">
+                  {lastScannedPart.Part_Description ?? '—'}
+                </div>
+
+                <div className="mt-1 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
+                  <div>
+                    <span className="opacity-60">Bin:</span>{' '}
+                    <span className="font-medium">{lastScannedPart.bin_location ?? '—'}</span>
+                  </div>
+                  <div>
+                    <span className="opacity-60">Store:</span>{' '}
+                    <span className="font-medium">{lastScannedPart.store_location ?? '—'}</span>
+                  </div>
+                  <div className="opacity-80">
+                    <span className="opacity-60">Created:</span>{' '}
+                    {fmt(lastScannedPart.created_at)}
+                  </div>
+                  <div className="opacity-80">
+                    <span className="opacity-60">Updated:</span>{' '}
+                    {fmt(lastScannedPart.updated_at)}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Camera Error Display */}
+        {cameraError && (
+          <div className="p-2 bg-red-100 text-red-800 rounded">Camera Error: {cameraError}</div>
         )}
 
-        {/* camera with overlay */}
-        <BarcodeScanner
-          autoStart={autoStart}
-          overlay={overlayCard}
-          onScanSuccess={handleScan}
-          onScanError={handleCameraError}
-        />
+        {/* Scan Processing Feedback */}
+        {scanError && <div className="p-2 bg-red-100 text-red-800 rounded">{scanError}</div>}
+        {scanSuccess && <div className="p-2 bg-green-100 text-green-800 rounded">{scanSuccess}</div>}
 
-        {StatusPills}
-
-        {/* compact controls (quantity / save / clear) */}
+        {/* (Optional) Result panel you already had */}
         <ScanResult
-          item={lastScannedItem}
-          isLoading={isProcessing || isItemLoading}
-          onSave={handleSaveItem}
-          onClear={() => {
-            setLastScannedItem(null);
-            setScanError(null);
-            setScanSuccess(null);
+          item={lastScannedPart as any}
+          isLoading={isProcessing}
+          error={scanError}
+          clearResult={clearRecentScan}
+          onSave={(updates) => {
+            if (lastScannedPart) {
+              addItem({ ...lastScannedPart, ...updates });
+            }
           }}
         />
       </main>
