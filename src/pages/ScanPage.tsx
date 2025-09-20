@@ -1,4 +1,6 @@
 // src/pages/ScanPage.tsx
+// update: persistent, compact result pill pinned to the right of "Add to List" (half-width on mobile, fixed width on md+)
+// :contentReference[oaicite:0]{index=0}
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BarcodeScanner } from '../components/BarcodeScanner';
@@ -35,8 +37,6 @@ type EquipmentRow = {
 
 type ScanRow = PartRow | EquipmentRow;
 
-const OVERLAY_MS = 4000; // how long the overlay stays up
-
 export const ScanPage: React.FC = () => {
   const navigate = useNavigate();
   const { selectedStore, isLoading: isStoreLoading } = useStore();
@@ -48,8 +48,8 @@ export const ScanPage: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [viewMode, setViewMode] = useState<'view' | 'add'>('view');
 
+  // Persist the LAST scanned item; never auto-hide
   const [lastScanned, setLastScanned] = useState<ScanRow | null>(null);
-  const [showOverlay, setShowOverlay] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
 
   // Load lists on mount
@@ -89,8 +89,6 @@ export const ScanPage: React.FC = () => {
         if (partData) {
           const part: PartRow = { kind: 'part', ...partData };
           setLastScanned(part);
-          setShowOverlay(true);
-          setTimeout(() => setShowOverlay(false), OVERLAY_MS);
 
           if (viewMode === 'view') {
             setScanSuccess(`${part.part_number} → Bin: ${part.bin_location ?? '—'}`);
@@ -140,21 +138,21 @@ export const ScanPage: React.FC = () => {
           return;
         }
 
-        // 2) Try EQUIPMENT (by stock_number)
-        const { data: equipData } = await supabase
-          .from('equipment') // <-- ensure this matches your DB table
+        // 2) Try EQUIPMENT (by stock_number, then serial_number)
+        const { data: equipData1 } = await supabase
+          .from('equipment')
           .select('*')
           .eq('stock_number', barcode)
           .maybeSingle();
 
+        const equipData = equipData1
+          ? equipData1
+          : (await supabase.from('equipment').select('*').eq('serial_number', barcode).maybeSingle()).data;
+
         if (equipData) {
           const eq: EquipmentRow = { kind: 'equipment', ...equipData };
           setLastScanned(eq);
-          setShowOverlay(true);
-          setTimeout(() => setShowOverlay(false), OVERLAY_MS);
-
-          // (no list add for equipment)
-          setScanSuccess(`${eq.stock_number} • ${eq.description ?? 'equipment'}`);
+          setScanSuccess(`${eq.stock_number ?? eq.serial_number ?? 'equipment'} loaded`);
           return;
         }
 
@@ -165,6 +163,7 @@ export const ScanPage: React.FC = () => {
         setScanError(error.message);
       } finally {
         setIsProcessing(false);
+        // keep success/error brief, but DO NOT clear lastScanned
         setTimeout(() => setScanError(null), 3000);
         setTimeout(() => setScanSuccess(null), 3000);
       }
@@ -197,89 +196,57 @@ export const ScanPage: React.FC = () => {
       <Header title="Scan Barcode" showBackButton />
 
       <main className="flex-1 p-4 space-y-4">
-        {/* Top row: Mode Toggle + HUD in the red-square area */}
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div className="flex space-x-4">
-            <button
-              className={viewMode === 'view' ? 'font-bold text-orange-600' : 'text-gray-600'}
-              onClick={() => setViewMode('view')}
-            >
-              View
-            </button>
-            <button
-              className={viewMode === 'add' ? 'font-bold text-orange-600' : 'text-gray-600'}
-              onClick={() => setViewMode('add')}
-            >
-              Add to List
-            </button>
-          </div>
-
-          {/* Compact HUD lives here (top-right on wide, full-width on small) */}
-          {showOverlay && lastScanned && (
-            <div
-              className={`rounded-xl text-white shadow-lg backdrop-blur-sm
-                          md:w-[360px] w-full
-                          ${lastScanned.kind === 'part' ? 'bg-black/70' : 'bg-slate-900/70'}`}
-            >
-              <div className="px-3 py-2">
-                {lastScanned.kind === 'part' ? (
-                  <>
-                    <div className="text-xs font-semibold tracking-wide opacity-90">
-                      {(lastScanned as PartRow).part_number}
-                    </div>
-                    <div className="text-[11px] opacity-90 line-clamp-2">
-                      {(lastScanned as PartRow).Part_Description ?? '—'}
-                    </div>
-                    <div className="mt-1 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
-                      <div>
-                        <span className="opacity-60">Bin:</span>{' '}
-                        <span className="font-medium">{(lastScanned as PartRow).bin_location ?? '—'}</span>
-                      </div>
-                      <div>
-                        <span className="opacity-60">Store:</span>{' '}
-                        <span className="font-medium">{(lastScanned as PartRow).store_location ?? '—'}</span>
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="text-xs font-semibold tracking-wide opacity-90">
-                      {(lastScanned as EquipmentRow).stock_number}
-                    </div>
-                    <div className="text-[11px] opacity-90 line-clamp-2">
-                      {(lastScanned as EquipmentRow).description ?? '—'}
-                    </div>
-                    <div className="mt-1 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
-                      <div>
-                        <span className="opacity-60">Make/Model:</span>{' '}
-                        <span className="font-medium">
-                          {[(lastScanned as EquipmentRow).make, (lastScanned as EquipmentRow).model]
-                            .filter(Boolean)
-                            .join(' ') || '—'}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="opacity-60">Serial:</span>{' '}
-                        <span className="font-medium">{(lastScanned as EquipmentRow).serial_number ?? '—'}</span>
-                      </div>
-                      <div>
-                        <span className="opacity-60">Customer:</span>{' '}
-                        <span className="font-medium">{(lastScanned as EquipmentRow).customer_name ?? '—'}</span>
-                      </div>
-                      <div>
-                        <span className="opacity-60">Store/Branch:</span>{' '}
-                        <span className="font-medium">
-                          {[(lastScanned as EquipmentRow).store_location, (lastScanned as EquipmentRow).branch]
-                            .filter(Boolean)
-                            .join(' • ') || '—'}
-                        </span>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
+        {/* Top bar: Mode Toggle + persistent HUD anchored right */}
+        <div className="sticky top-0 z-10 bg-gray-50/80 backdrop-blur py-1">
+          <div className="relative flex items-start justify-start gap-3">
+            {/* Left: tabs */}
+            <div className="flex gap-4">
+              <button
+                className={viewMode === 'view' ? 'pb-1 border-b-2 border-orange-600 text-orange-700' : 'pb-1 border-b-2 border-transparent text-gray-500'}
+                onClick={() => setViewMode('view')}
+              >
+                View
+              </button>
+              <button
+                className={viewMode === 'add' ? 'pb-1 border-b-2 border-orange-600 text-orange-700' : 'pb-1 border-b-2 border-transparent text-gray-500'}
+                onClick={() => setViewMode('add')}
+              >
+                Add to List
+              </button>
             </div>
-          )}
+
+            {/* Right: persistent compact pill (does not push layout) */}
+            {lastScanned && (
+              <div
+                className="absolute right-0 top-0 w-1/2 md:w-[360px]"
+                aria-live="polite"
+              >
+                <div className={`rounded-xl text-white px-4 py-2 shadow-md overflow-hidden ${lastScanned.kind === 'part' ? 'bg-gray-900' : 'bg-slate-900'}`}>
+                  {lastScanned.kind === 'part' ? (
+                    <>
+                      <div className="text-sm font-semibold truncate">{(lastScanned as PartRow).part_number}</div>
+                      <div className="flex items-center text-xs opacity-90 justify-between gap-2">
+                        <span className="truncate">{(lastScanned as PartRow).Part_Description || '—'}</span>
+                        <span className="ml-2 whitespace-nowrap">Bin: {(lastScanned as PartRow).bin_location || '—'}</span>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="text-sm font-semibold truncate">
+                        {(lastScanned as EquipmentRow).stock_number || (lastScanned as EquipmentRow).serial_number}
+                      </div>
+                      <div className="flex items-center text-xs opacity-90 justify-between gap-2">
+                        <span className="truncate">{(lastScanned as EquipmentRow).description || '—'}</span>
+                        <span className="ml-2 whitespace-nowrap">
+                          SN: {(lastScanned as EquipmentRow).serial_number || '—'}
+                        </span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Scanner */}
