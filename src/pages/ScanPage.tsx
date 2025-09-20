@@ -1,6 +1,7 @@
 // src/pages/ScanPage.tsx
-// update: persistent, compact result pill pinned to the right of "Add to List" (half-width on mobile, fixed width on md+)
-// :contentReference[oaicite:0]{index=0}
+// Persistent compact result pill pinned to the right of "Add to List"
+// Tapping the pill’s main value opens the phone keyboard (readOnly <input> with auto-select)
+
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BarcodeScanner } from '../components/BarcodeScanner';
@@ -24,7 +25,7 @@ type PartRow = {
 
 type EquipmentRow = {
   kind: 'equipment';
-  stock_number: string;
+  stock_number?: string | null;
   description?: string | null;
   make?: string | null;
   model?: string | null;
@@ -139,14 +140,9 @@ export const ScanPage: React.FC = () => {
         }
 
         // 2) Try EQUIPMENT (by stock_number, then serial_number)
-        const { data: equipData1 } = await supabase
-          .from('equipment')
-          .select('*')
-          .eq('stock_number', barcode)
-          .maybeSingle();
-
-        const equipData = equipData1
-          ? equipData1
+        const eq1 = await supabase.from('equipment').select('*').eq('stock_number', barcode).maybeSingle();
+        const equipData = eq1.data
+          ? eq1.data
           : (await supabase.from('equipment').select('*').eq('serial_number', barcode).maybeSingle()).data;
 
         if (equipData) {
@@ -215,16 +211,24 @@ export const ScanPage: React.FC = () => {
               </button>
             </div>
 
-            {/* Right: persistent compact pill (does not push layout) */}
+            {/* Right: persistent compact pill (tappable input that opens keyboard) */}
             {lastScanned && (
-              <div
-                className="absolute right-0 top-0 w-1/2 md:w-[360px]"
-                aria-live="polite"
-              >
-                <div className={`rounded-xl text-white px-4 py-2 shadow-md overflow-hidden ${lastScanned.kind === 'part' ? 'bg-gray-900' : 'bg-slate-900'}`}>
+              <div className="absolute right-0 top-0 w-1/2 md:w-[360px]" aria-live="polite">
+                <div
+                  className={`rounded-xl text-white px-4 py-2 shadow-md overflow-hidden ${
+                    lastScanned.kind === 'part' ? 'bg-gray-900' : 'bg-slate-900'
+                  }`}
+                >
                   {lastScanned.kind === 'part' ? (
                     <>
-                      <div className="text-sm font-semibold truncate">{(lastScanned as PartRow).part_number}</div>
+                      <input
+                        className="bg-transparent text-sm font-semibold truncate w-full outline-none"
+                        value={(lastScanned as PartRow).part_number}
+                        readOnly
+                        onFocus={(e) => e.currentTarget.select()}
+                        onClick={(e) => (e.currentTarget as HTMLInputElement).select()}
+                        inputMode="text"
+                      />
                       <div className="flex items-center text-xs opacity-90 justify-between gap-2">
                         <span className="truncate">{(lastScanned as PartRow).Part_Description || '—'}</span>
                         <span className="ml-2 whitespace-nowrap">Bin: {(lastScanned as PartRow).bin_location || '—'}</span>
@@ -232,14 +236,21 @@ export const ScanPage: React.FC = () => {
                     </>
                   ) : (
                     <>
-                      <div className="text-sm font-semibold truncate">
-                        {(lastScanned as EquipmentRow).stock_number || (lastScanned as EquipmentRow).serial_number}
-                      </div>
+                      <input
+                        className="bg-transparent text-sm font-semibold truncate w-full outline-none"
+                        value={
+                          (lastScanned as EquipmentRow).stock_number ||
+                          (lastScanned as EquipmentRow).serial_number ||
+                          ''
+                        }
+                        readOnly
+                        onFocus={(e) => e.currentTarget.select()}
+                        onClick={(e) => (e.currentTarget as HTMLInputElement).select()}
+                        inputMode="text"
+                      />
                       <div className="flex items-center text-xs opacity-90 justify-between gap-2">
                         <span className="truncate">{(lastScanned as EquipmentRow).description || '—'}</span>
-                        <span className="ml-2 whitespace-nowrap">
-                          SN: {(lastScanned as EquipmentRow).serial_number || '—'}
-                        </span>
+                        <span className="ml-2 whitespace-nowrap">SN: {(lastScanned as EquipmentRow).serial_number || '—'}</span>
                       </div>
                     </>
                   )}
@@ -250,14 +261,10 @@ export const ScanPage: React.FC = () => {
         </div>
 
         {/* Scanner */}
-        <div className="relative">
-          {barcodeScannerComponent}
-        </div>
+        <div className="relative">{barcodeScannerComponent}</div>
 
         {/* Camera Error Display */}
-        {cameraError && (
-          <div className="p-2 bg-red-100 text-red-800 rounded">Camera Error: {cameraError}</div>
-        )}
+        {cameraError && <div className="p-2 bg-red-100 text-red-800 rounded">Camera Error: {cameraError}</div>}
 
         {/* Scan Processing Feedback */}
         {scanError && <div className="p-2 bg-red-100 text-red-800 rounded">{scanError}</div>}
