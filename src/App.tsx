@@ -11,22 +11,19 @@ import { ListDetailPage } from './pages/ListDetailPage';
 import { ScanPage } from './pages/ScanPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { InventoryPage } from './pages/InventoryPage';
+import { WorkOrderPage } from './pages/WorkOrderPage'; // keep legacy
+import ManagerPage from './pages/ManagerPage';          // NEW
 
-// NEW plural import
-import WorkOrdersPage from './pages/WorkOrdersPage';
-// If you've added ManagerPage, also import it:
-// import { ManagerPage } from './pages/ManagerPage';
+// Reuse your existing WorkOrderPage for plural route by alias:
+const WorkOrdersPage = WorkOrderPage;
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, isLoading } = useAuthStore();
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-50">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
-      </div>
-    );
-  }
+  if (isLoading) return (
+    <div className="flex items-center justify-center min-h-screen bg-gray-50">
+      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
+    </div>
+  );
   if (!user) return <Navigate to="/login" replace />;
   return <>{children}</>;
 };
@@ -48,12 +45,11 @@ function App() {
           <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
           <Route path="/inventory" element={<ProtectedRoute><InventoryPage /></ProtectedRoute>} />
 
-          {/* NEW plural route */}
+          {/* NEW tabs */}
           <Route path="/work-orders" element={<ProtectedRoute><WorkOrdersPage /></ProtectedRoute>} />
-          {/* Optional manager route if you created the page */}
-          {/* <Route path="/manager" element={<ProtectedRoute><ManagerPage /></ProtectedRoute>} /> */}
+          <Route path="/manager" element={<ProtectedRoute><ManagerPage /></ProtectedRoute>} />
 
-          {/* legacy redirect (singular -> plural) */}
+          {/* Legacy singular route still works; redirect if you prefer */}
           <Route path="/work-order" element={<Navigate to="/work-orders" replace />} />
 
           <Route path="*" element={<Navigate to="/" replace />} />
