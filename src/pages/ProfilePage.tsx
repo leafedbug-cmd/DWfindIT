@@ -1,4 +1,3 @@
-// src/pages/ProfilePage.tsx
 import React, { useEffect, useMemo, useState } from 'react';
 import { Header } from '../components/Header';
 import { BottomNav } from '../components/BottomNav';
@@ -9,7 +8,7 @@ import { ChevronRight } from 'lucide-react';
 
 type ProfileRow = {
   id: string;
-  full_name?: string | null;
+  employee_name?: string | null;   // ← use employee_name
   email?: string | null;
   role?: string | null;
   store_location?: string | null;
@@ -37,10 +36,10 @@ const ManagerSection: React.FC = () => {
         setLoading(true);
         setErr(null);
 
-        // 1) get all employee profiles for this store
+        // 1) fetch employee profiles for this store
         const { data: profData, error: profErr } = await supabase
           .from('profiles')
-          .select('id, full_name, email, role, store_location')
+          .select('id, employee_name, email, role, store_location') // ← employee_name
           .eq('store_location', selectedStore);
 
         if (profErr) throw profErr;
@@ -54,21 +53,18 @@ const ManagerSection: React.FC = () => {
         if (!alive) return;
         setProfilesById(byId);
 
-        // no employees in this store? then no lists
+        // 2) fetch lists owned by those users
         if (userIds.length === 0) {
           setLists([]);
-          return;
+        } else {
+          const { data: listData, error: listErr } = await supabase
+            .from('lists')
+            .select('id, name, user_id, updated_at')
+            .in('user_id', userIds);
+          if (listErr) throw listErr;
+          if (!alive) return;
+          setLists(listData || []);
         }
-
-        // 2) fetch lists owned by those users
-        const { data: listData, error: listErr } = await supabase
-          .from('lists')
-          .select('id, name, user_id, updated_at')
-          .in('user_id', userIds);
-
-        if (listErr) throw listErr;
-        if (!alive) return;
-        setLists(listData || []);
       } catch (e: any) {
         if (alive) setErr(e.message || String(e));
       } finally {
@@ -102,7 +98,7 @@ const ManagerSection: React.FC = () => {
         <>
           {[...grouped.entries()].map(([userId, userLists]) => {
             const owner = profilesById[userId];
-            const title = owner?.full_name || owner?.email || userId;
+            const title = owner?.employee_name || owner?.email || userId; // ← use employee_name
             const open = userId === expanded;
 
             return (
@@ -186,7 +182,6 @@ export const ProfilePage: React.FC = () => {
     <div className="min-h-screen bg-gray-50 flex flex-col pb-16">
       <Header title="Profile" />
       <main className="flex-1 p-4 space-y-6">
-        {/* Account card */}
         <div className="bg-white border border-gray-200 rounded-lg p-4">
           <div className="font-semibold text-gray-900 mb-1">Account</div>
           <div className="text-sm text-gray-600">User: {user?.email}</div>
@@ -195,7 +190,6 @@ export const ProfilePage: React.FC = () => {
           </div>
         </div>
 
-        {/* Manager tools (only for managers) */}
         {isManager && (
           <div className="space-y-3">
             <div className="text-xs uppercase tracking-wide text-gray-500">Manager</div>
