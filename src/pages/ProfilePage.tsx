@@ -15,18 +15,16 @@ type ProfileRow = {
   store_location?: string | null;
 };
 
-type ListWithOwner = {
+type ListRow = {
   id: string;
   name: string;
   user_id: string;
   updated_at: string | null;
-  // joined owner profile for this list’s creator
-  profiles: ProfileRow | null;
 };
 
 const ManagerSection: React.FC = () => {
   const { selectedStore } = useStore();
-  const [lists, setLists] = useState<ListWithOwner[]>([]);
+  const [lists, setLists] = useState<ListRow[]>([]);
   const [profilesById, setProfilesById] = useState<Record<string, ProfileRow>>({});
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -39,54 +37,52 @@ const ManagerSection: React.FC = () => {
         setLoading(true);
         setErr(null);
 
-        // JOIN profiles (owner) and filter by the owner’s store
-        const { data, error } = await supabase
-          .from('lists')
-          .select(`
-            id,
-            name,
-            user_id,
-            updated_at,
-            profiles!inner (
-              id,
-              full_name,
-              email,
-              role,
-              store_location
-            )
-          `)
-          .eq('profiles.store_location', selectedStore);
+        // 1) get all employee profiles for this store
+        const { data: profData, error: profErr } = await supabase
+          .from('profiles')
+          .select('id, full_name, email, role, store_location')
+          .eq('store_location', selectedStore);
 
-        if (error) throw error;
-        if (!alive) return;
+        if (profErr) throw profErr;
 
-        const listData = (data || []) as ListWithOwner[];
-        setLists(listData);
-
-        // Build quick lookup of owner profiles
         const byId: Record<string, ProfileRow> = {};
-        for (const row of listData) {
-          if (row.profiles) byId[row.profiles.id] = row.profiles;
+        const userIds: string[] = [];
+        for (const p of profData || []) {
+          byId[p.id] = p;
+          userIds.push(p.id);
         }
+        if (!alive) return;
         setProfilesById(byId);
+
+        // no employees in this store? then no lists
+        if (userIds.length === 0) {
+          setLists([]);
+          return;
+        }
+
+        // 2) fetch lists owned by those users
+        const { data: listData, error: listErr } = await supabase
+          .from('lists')
+          .select('id, name, user_id, updated_at')
+          .in('user_id', userIds);
+
+        if (listErr) throw listErr;
+        if (!alive) return;
+        setLists(listData || []);
       } catch (e: any) {
         if (alive) setErr(e.message || String(e));
       } finally {
         if (alive) setLoading(false);
       }
     })();
-
-    return () => {
-      alive = false;
-    };
+    return () => { alive = false; };
   }, [selectedStore]);
 
   const grouped = useMemo(() => {
-    const m = new Map<string, ListWithOwner[]>();
+    const m = new Map<string, ListRow[]>();
     for (const l of lists) {
-      const key = l.user_id;
-      if (!m.has(key)) m.set(key, []);
-      m.get(key)!.push(l);
+      if (!m.has(l.user_id)) m.set(l.user_id, []);
+      m.get(l.user_id)!.push(l);
     }
     return m;
   }, [lists]);
@@ -135,10 +131,7 @@ const ManagerSection: React.FC = () => {
                             Updated {l.updated_at ? new Date(l.updated_at).toLocaleString() : '—'}
                           </div>
                         </div>
-                        <a
-                          href={`/list/${l.id}`}
-                          className="text-orange-600 text-sm font-medium hover:underline"
-                        >
+                        <a href={`/list/${l.id}`} className="text-orange-600 text-sm font-medium hover:underline">
                           View
                         </a>
                       </div>
@@ -170,10 +163,7 @@ export const ProfilePage: React.FC = () => {
     (async () => {
       try {
         setLoadingRole(true);
-        if (!user) {
-          setRole(null);
-          return;
-        }
+        if (!user) { setRole(null); return; }
         const { data, error } = await supabase
           .from('profiles')
           .select('role')
@@ -187,9 +177,7 @@ export const ProfilePage: React.FC = () => {
         if (alive) setLoadingRole(false);
       }
     })();
-    return () => {
-      alive = false;
-    };
+    return () => { alive = false; };
   }, [user]);
 
   const isManager = role === 'manager';
