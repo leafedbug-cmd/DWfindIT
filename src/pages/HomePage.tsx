@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Header } from '../components/Header';
 import { BottomNav } from '../components/BottomNav';
-import { Scan, ClipboardList, Package, X, FileText } from 'lucide-react';
+import { Scan, ClipboardList, Package, X } from 'lucide-react';
 import { Html5Qrcode } from 'html5-qrcode';
 import { supabase } from '../services/supabase';
 import { useStore } from '../contexts/StoreContext';
@@ -17,10 +17,7 @@ export const HomePage: React.FC = () => {
   const [scanError, setScanError] = useState<string | null>(null);
   const [isStarting, setIsStarting] = useState(false);
 
-  // Keep the scanner instance in a ref so we can reliably stop/clear it
   const scannerRef = useRef<Html5Qrcode | null>(null);
-
-  // ---- utilities -----------------------------------------------------------
 
   const cleanupScanner = async () => {
     const s = scannerRef.current;
@@ -30,107 +27,56 @@ export const HomePage: React.FC = () => {
     scannerRef.current = null;
   };
 
-  useEffect(() => {
-    // On unmount, always release the camera/video element
-    return () => { void cleanupScanner(); };
-  }, []);
-
-  // ---- quick scan flow -----------------------------------------------------
+  useEffect(() => () => { void cleanupScanner(); }, []);
 
   const startQuickScan = async () => {
-    // prevent re-entrancy and double-inits
     if (isStarting || scannerRef.current) return;
-
     setScanError(null);
     setQuickScanResult(null);
     setIsStarting(true);
-
     try {
       const containerId = 'quick-scanner';
       const el = document.getElementById(containerId);
       if (!el) throw new Error('Scanner container not found in the DOM.');
-
-      // ensure no stale instance leftover
       await cleanupScanner();
-
       const html5QrCode = new Html5Qrcode(containerId);
       scannerRef.current = html5QrCode;
-
       const cameras = await Html5Qrcode.getCameras();
       if (!cameras?.length) throw new Error('No cameras found on this device.');
-
-      const preferred = cameras.find(cam => /back|rear|environment/i.test(cam.label)) ?? cameras[0];
-
+      const preferred = cameras.find(c => /back|rear|environment/i.test(c.label)) ?? cameras[0];
       await html5QrCode.start(
         { deviceId: { exact: preferred.id } },
         { fps: 10, qrbox: { width: 250, height: 250 } },
-        // onSuccess
         async (decodedText) => {
           try {
-            // Lookup in parts for the currently selected store
             const { data: partData, error: partError } = await supabase
               .from('parts')
               .select('*')
               .eq('part_number', decodedText)
               .eq('store_location', selectedStore)
               .maybeSingle();
-
-            if (partError) {
-              setScanError(`Database error: ${partError.message}`);
-              setQuickScanResult(null);
-              return;
-            }
-
-            if (!partData) {
-              setScanError(`Part "${decodedText}" not found in store ${selectedStore}`);
-              setQuickScanResult(null);
-              return;
-            }
-
-            setQuickScanResult(partData);
-            setScanError(null);
-          } catch (e: any) {
-            setScanError(e?.message || 'Failed to process scan');
-            setQuickScanResult(null);
-          }
+            if (partError) { setScanError(`Database error: ${partError.message}`); setQuickScanResult(null); return; }
+            if (!partData) { setScanError(`Part "${decodedText}" not found in store ${selectedStore}`); setQuickScanResult(null); return; }
+            setQuickScanResult(partData); setScanError(null);
+          } catch (e: any) { setScanError(e?.message || 'Failed to process scan'); setQuickScanResult(null); }
         },
-        // onFailure (frequent decode errors are normal)
-        (errorMessage) => {
-          if (!/NotFoundException/i.test(errorMessage)) {
-            console.debug('Scanner decode error:', errorMessage);
-          }
-        }
+        (errorMessage) => { if (!/NotFoundException/i.test(errorMessage)) console.debug('Scanner decode error:', errorMessage); }
       );
     } catch (err: any) {
       setScanError(err?.message || 'Failed to start scanner');
       await cleanupScanner();
       setIsQuickScanning(false);
-    } finally {
-      setIsStarting(false);
-    }
+    } finally { setIsStarting(false); }
   };
 
-  const handleQuickScan = () => {
-    setIsQuickScanning(true);
-    // allow modal to render before initializing
-    setTimeout(() => { void startQuickScan(); }, 100);
-  };
-
-  const closeQuickScan = async () => {
-    await cleanupScanner();
-    setIsQuickScanning(false);
-    setQuickScanResult(null);
-    setScanError(null);
-  };
-
-  // ---- UI ------------------------------------------------------------------
+  const handleQuickScan = () => { setIsQuickScanning(true); setTimeout(() => { void startQuickScan(); }, 100); };
+  const closeQuickScan = async () => { await cleanupScanner(); setIsQuickScanning(false); setQuickScanResult(null); setScanError(null); };
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col pb-16">
       <Header title="Inventory Scanner" />
 
       <main className="flex-1 p-4">
-        {/* Welcome Banner */}
         <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg shadow-lg p-6 mb-6">
           <h1 className="text-2xl font-bold text-white mb-2">Welcome Back</h1>
           <p className="text-orange-100 mb-4">Your mobile inventory scanning assistant</p>
@@ -144,41 +90,29 @@ export const HomePage: React.FC = () => {
           </button>
         </div>
 
-        {/* Quick Actions */}
+        {/* Quick Actions (work orders moved to its own tab) */}
         <div className="mb-8">
           <h2 className="text-xl font-semibold text-gray-900 mb-4">Quick Actions</h2>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <button
-              onClick={handleQuickScan}
-              className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow flex flex-col items-center"
-            >
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <button onClick={handleQuickScan} className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow flex flex-col items-center">
               <Scan className="h-8 w-8 text-orange-600 mb-2" />
               <span className="font-medium text-gray-900">Quick Scan</span>
               <span className="text-sm text-gray-500 text-center">Scan to view part info</span>
             </button>
-            <button
-              onClick={() => navigate('/lists')}
-              className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow flex flex-col items-center"
-            >
-              <ClipboardList className="h-8 w-8 text-orange-600 mb-2" />
+            <button onClick={() => navigate('/lists')} className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow flex flex-col items-center">
+              <span className="h-8 w-8 mb-2 grid place-items-center text-orange-600">
+                {/* list icon substitute to avoid extra import here */}
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+              </span>
               <span className="font-medium text-gray-900">My Lists</span>
               <span className="text-sm text-gray-500 text-center">View scan lists</span>
             </button>
-            <button
-              onClick={() => navigate('/inventory')}
-              className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow flex flex-col items-center"
-            >
-              <Package className="h-8 w-8 text-orange-600 mb-2" />
+            <button onClick={() => navigate('/inventory')} className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow flex flex-col items-center">
+              <span className="h-8 w-8 mb-2 grid place-items-center text-orange-600">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><rect x="3" y="7" width="18" height="13" rx="2" stroke="currentColor" strokeWidth="2"/><path d="M3 10h18" stroke="currentColor" strokeWidth="2"/></svg>
+              </span>
               <span className="font-medium text-gray-900">Inventory</span>
               <span className="text-sm text-gray-500 text-center">Browse parts</span>
-            </button>
-            <button
-              onClick={() => navigate('/work-order')}
-              className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow flex flex-col items-center"
-            >
-              <FileText className="h-8 w-8 text-orange-600 mb-2" />
-              <span className="font-medium text-gray-900">Work Orders</span>
-              <span className="text-sm text-gray-500 text-center">Create service tickets</span>
             </button>
           </div>
         </div>
@@ -192,7 +126,7 @@ export const HomePage: React.FC = () => {
         </div>
       </main>
 
-      {/* Quick Scan Modal */}
+      {/* Quick Scan Modal (pill style matches ScanPage) */}
       {isQuickScanning && (
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg max-w-md w-full p-6 flex flex-col">
@@ -203,42 +137,16 @@ export const HomePage: React.FC = () => {
               </button>
             </div>
 
-            <div
-              id="quick-scanner"
-              className="w-full border-2 border-dashed border-gray-300 rounded-lg mb-4 bg-gray-50 overflow-hidden"
-              style={{ minHeight: '200px', maxHeight: '200px' }}
-            />
+            <div id="quick-scanner" className="w-full border-2 border-dashed border-gray-300 rounded-lg mb-4 bg-gray-50 overflow-hidden" style={{ minHeight: '200px', maxHeight: '200px' }} />
 
             <div className="flex-shrink-0">
-              {scanError && (
-                <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
-                  {scanError}
-                </div>
-              )}
-
-              {/* UPDATED: pill-style result to match ScanPage */}
+              {scanError && <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">{scanError}</div>}
               {quickScanResult && (
-                <div
-                  className="mb-2 rounded-xl text-white px-4 py-2 shadow-md bg-gray-900"
-                  aria-live="polite"
-                >
-                  {/* copyable part number */}
-                  <input
-                    className="bg-transparent text-sm font-semibold truncate w-full outline-none"
-                    value={quickScanResult.part_number || ''}
-                    readOnly
-                    onFocus={(e) => e.currentTarget.select()}
-                    onClick={(e) => (e.currentTarget as HTMLInputElement).select()}
-                    inputMode="text"
-                  />
-                  {/* description + bin */}
+                <div className="mb-2 rounded-xl text-white px-4 py-2 shadow-md bg-gray-900" aria-live="polite">
+                  <input className="bg-transparent text-sm font-semibold truncate w-full outline-none" value={quickScanResult.part_number || ''} readOnly onFocus={(e) => e.currentTarget.select()} onClick={(e) => (e.currentTarget as HTMLInputElement).select()} inputMode="text" />
                   <div className="flex items-center text-xs opacity-90 justify-between gap-2">
-                    <span className="truncate">
-                      {quickScanResult.Part_Description || quickScanResult.description || '—'}
-                    </span>
-                    <span className="ml-2 whitespace-nowrap">
-                      Bin: {quickScanResult.bin_location || '—'}
-                    </span>
+                    <span className="truncate">{quickScanResult.Part_Description || quickScanResult.description || '—'}</span>
+                    <span className="ml-2 whitespace-nowrap">Bin: {quickScanResult.bin_location || '—'}</span>
                   </div>
                 </div>
               )}
