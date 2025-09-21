@@ -12,9 +12,8 @@ import { ScanPage } from './pages/ScanPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { InventoryPage } from './pages/InventoryPage';
 
-// NEW
 import { ManagerPage } from './pages/ManagerPage';
-import { WorkOrdersPage } from './pages/WorkOrdersPage';
+import { WorkOrdersPage } from './pages/WorkOrdersPage'; // NEW
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, isLoading } = useAuthStore();
@@ -50,7 +49,7 @@ function App() {
           <Route path="/work-orders" element={<ProtectedRoute><WorkOrdersPage /></ProtectedRoute>} />
           <Route path="/manager" element={<ProtectedRoute><ManagerPage /></ProtectedRoute>} />
 
-          {/* legacy redirect (singular -> plural) */}
+          {/* Legacy redirect (singular -> plural) */}
           <Route path="/work-order" element={<Navigate to="/work-orders" replace />} />
 
           <Route path="*" element={<Navigate to="/" replace />} />
