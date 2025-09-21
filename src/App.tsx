@@ -3,6 +3,7 @@ import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './store/authStore';
 import { StoreProvider } from './contexts/StoreContext';
+
 import { LoginPage } from './pages/LoginPage';
 import { HomePage } from './pages/HomePage';
 import { ListsPage } from './pages/ListsPage';
@@ -10,11 +11,13 @@ import { ListDetailPage } from './pages/ListDetailPage';
 import { ScanPage } from './pages/ScanPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { InventoryPage } from './pages/InventoryPage';
-import { WorkOrderPage } from './pages/WorkOrderPage';
+
+// NEW
+import { ManagerPage } from './pages/ManagerPage';
+import { WorkOrdersPage } from './pages/WorkOrdersPage';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, isLoading } = useAuthStore();
-
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-50">
@@ -22,20 +25,13 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
       </div>
     );
   }
-
-  if (!user) {
-    return <Navigate to="/login" replace />;
-  }
-
+  if (!user) return <Navigate to="/login" replace />;
   return <>{children}</>;
 };
 
 function App() {
   const { refreshSession } = useAuthStore();
-
-  useEffect(() => {
-    refreshSession();
-  }, [refreshSession]);
+  useEffect(() => { refreshSession(); }, [refreshSession]);
 
   return (
     <BrowserRouter>
@@ -43,68 +39,19 @@ function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
 
-          <Route
-            path="/"
-            element={
-              <ProtectedRoute>
-                <HomePage />
-              </ProtectedRoute>
-            }
-          />
+          <Route path="/" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
+          <Route path="/lists" element={<ProtectedRoute><ListsPage /></ProtectedRoute>} />
+          <Route path="/list/:id" element={<ProtectedRoute><ListDetailPage /></ProtectedRoute>} />
+          <Route path="/scan" element={<ProtectedRoute><ScanPage /></ProtectedRoute>} />
+          <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+          <Route path="/inventory" element={<ProtectedRoute><InventoryPage /></ProtectedRoute>} />
 
-          <Route
-            path="/lists"
-            element={
-              <ProtectedRoute>
-                <ListsPage />
-              </ProtectedRoute>
-            }
-          />
+          {/* NEW tabs */}
+          <Route path="/work-orders" element={<ProtectedRoute><WorkOrdersPage /></ProtectedRoute>} />
+          <Route path="/manager" element={<ProtectedRoute><ManagerPage /></ProtectedRoute>} />
 
-          <Route
-            path="/list/:id"
-            element={
-              <ProtectedRoute>
-                <ListDetailPage />
-              </ProtectedRoute>
-            }
-          />
-
-          <Route
-            path="/scan"
-            element={
-              <ProtectedRoute>
-                <ScanPage />
-              </ProtectedRoute>
-            }
-          />
-
-          <Route
-            path="/profile"
-            element={
-              <ProtectedRoute>
-                <ProfilePage />
-              </ProtectedRoute>
-            }
-          />
-
-          <Route
-            path="/inventory"
-            element={
-              <ProtectedRoute>
-                <InventoryPage />
-              </ProtectedRoute>
-            }
-          />
-
-          <Route
-            path="/work-order"
-            element={
-              <ProtectedRoute>
-                <WorkOrderPage />
-              </ProtectedRoute>
-            }
-          />
+          {/* legacy redirect (singular -> plural) */}
+          <Route path="/work-order" element={<Navigate to="/work-orders" replace />} />
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
