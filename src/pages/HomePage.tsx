@@ -216,14 +216,30 @@ export const HomePage: React.FC = () => {
                 </div>
               )}
 
+              {/* UPDATED: pill-style result to match ScanPage */}
               {quickScanResult && (
-                <div className="mb-4 p-4 bg-green-100 border border-green-400 rounded">
-                  <h4 className="font-semibold text-green-800">Part Found!</h4>
-                  <p><strong>Part:</strong> {quickScanResult.part_number}</p>
-                  <p><strong>Bin:</strong> {quickScanResult.bin_location}</p>
-                  {quickScanResult.description && (
-                    <p><strong>Description:</strong> {quickScanResult.description}</p>
-                  )}
+                <div
+                  className="mb-2 rounded-xl text-white px-4 py-2 shadow-md bg-gray-900"
+                  aria-live="polite"
+                >
+                  {/* copyable part number */}
+                  <input
+                    className="bg-transparent text-sm font-semibold truncate w-full outline-none"
+                    value={quickScanResult.part_number || ''}
+                    readOnly
+                    onFocus={(e) => e.currentTarget.select()}
+                    onClick={(e) => (e.currentTarget as HTMLInputElement).select()}
+                    inputMode="text"
+                  />
+                  {/* description + bin */}
+                  <div className="flex items-center text-xs opacity-90 justify-between gap-2">
+                    <span className="truncate">
+                      {quickScanResult.Part_Description || quickScanResult.description || '—'}
+                    </span>
+                    <span className="ml-2 whitespace-nowrap">
+                      Bin: {quickScanResult.bin_location || '—'}
+                    </span>
+                  </div>
                 </div>
               )}
             </div>
