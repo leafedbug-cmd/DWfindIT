@@ -7,13 +7,27 @@ import { useStore } from '../contexts/StoreContext';
 import { useAuthStore } from '../store/authStore';
 import { ChevronRight } from 'lucide-react';
 
-type ListRow = { id: string; name: string; user_id: string; store_location: string | null; updated_at: string | null; };
-type ProfileRow = { id: string; full_name?: string | null; email?: string | null; role?: string | null; };
+type ProfileRow = {
+  id: string;
+  full_name?: string | null;
+  email?: string | null;
+  role?: string | null;
+  store_location?: string | null;
+};
+
+type ListWithOwner = {
+  id: string;
+  name: string;
+  user_id: string;
+  updated_at: string | null;
+  // joined owner profile for this list’s creator
+  profiles: ProfileRow | null;
+};
 
 const ManagerSection: React.FC = () => {
   const { selectedStore } = useStore();
-  const [lists, setLists] = useState<ListRow[]>([]);
-  const [profiles, setProfiles] = useState<Record<string, ProfileRow>>({});
+  const [lists, setLists] = useState<ListWithOwner[]>([]);
+  const [profilesById, setProfilesById] = useState<Record<string, ProfileRow>>({});
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -22,39 +36,58 @@ const ManagerSection: React.FC = () => {
     let alive = true;
     (async () => {
       try {
-        setLoading(true); setErr(null);
+        setLoading(true);
+        setErr(null);
 
-        const { data: listData, error: listErr } = await supabase
+        // JOIN profiles (owner) and filter by the owner’s store
+        const { data, error } = await supabase
           .from('lists')
-          .select('id, name, user_id, store_location, updated_at')
-          .eq('store_location', selectedStore);
+          .select(`
+            id,
+            name,
+            user_id,
+            updated_at,
+            profiles!inner (
+              id,
+              full_name,
+              email,
+              role,
+              store_location
+            )
+          `)
+          .eq('profiles.store_location', selectedStore);
 
-        if (listErr) throw listErr;
+        if (error) throw error;
         if (!alive) return;
-        setLists(listData || []);
 
-        const userIds = Array.from(new Set((listData || []).map(l => l.user_id)));
-        if (userIds.length) {
-          const { data: profData } = await supabase
-            .from('profiles')
-            .select('id, full_name, email, role')
-            .in('id', userIds as string[]);
-          const byId: Record<string, ProfileRow> = {};
-          for (const p of (profData || [])) byId[p.id] = p;
-          if (alive) setProfiles(byId);
+        const listData = (data || []) as ListWithOwner[];
+        setLists(listData);
+
+        // Build quick lookup of owner profiles
+        const byId: Record<string, ProfileRow> = {};
+        for (const row of listData) {
+          if (row.profiles) byId[row.profiles.id] = row.profiles;
         }
+        setProfilesById(byId);
       } catch (e: any) {
         if (alive) setErr(e.message || String(e));
       } finally {
         if (alive) setLoading(false);
       }
     })();
-    return () => { alive = false; };
+
+    return () => {
+      alive = false;
+    };
   }, [selectedStore]);
 
   const grouped = useMemo(() => {
-    const m = new Map<string, ListRow[]>();
-    for (const l of lists) { if (!m.has(l.user_id)) m.set(l.user_id, []); m.get(l.user_id)!.push(l); }
+    const m = new Map<string, ListWithOwner[]>();
+    for (const l of lists) {
+      const key = l.user_id;
+      if (!m.has(key)) m.set(key, []);
+      m.get(key)!.push(l);
+    }
     return m;
   }, [lists]);
 
@@ -72,9 +105,10 @@ const ManagerSection: React.FC = () => {
       {!loading && !err && (
         <>
           {[...grouped.entries()].map(([userId, userLists]) => {
-            const p = profiles[userId];
-            const title = p?.full_name || p?.email || userId;
+            const owner = profilesById[userId];
+            const title = owner?.full_name || owner?.email || userId;
             const open = userId === expanded;
+
             return (
               <div key={userId} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
                 <button
@@ -85,7 +119,7 @@ const ManagerSection: React.FC = () => {
                     <div className="font-semibold text-gray-900">{title}</div>
                     <div className="text-xs text-gray-500">
                       {userLists.length} list{userLists.length !== 1 ? 's' : ''} in {selectedStore}
-                      {p?.role ? ` • role: ${p.role}` : ''}
+                      {owner?.role ? ` • role: ${owner.role}` : ''}
                     </div>
                   </div>
                   <ChevronRight className={`h-4 w-4 transition-transform ${open ? 'rotate-90' : ''}`} />
@@ -93,7 +127,7 @@ const ManagerSection: React.FC = () => {
 
                 {open && (
                   <div className="border-t border-gray-200 divide-y">
-                    {userLists.map(l => (
+                    {userLists.map((l) => (
                       <div key={l.id} className="flex items-center justify-between px-4 py-3">
                         <div>
                           <div className="text-sm font-medium">{l.name}</div>
@@ -101,7 +135,10 @@ const ManagerSection: React.FC = () => {
                             Updated {l.updated_at ? new Date(l.updated_at).toLocaleString() : '—'}
                           </div>
                         </div>
-                        <a href={`/list/${l.id}`} className="text-orange-600 text-sm font-medium hover:underline">
+                        <a
+                          href={`/list/${l.id}`}
+                          className="text-orange-600 text-sm font-medium hover:underline"
+                        >
                           View
                         </a>
                       </div>
@@ -111,6 +148,7 @@ const ManagerSection: React.FC = () => {
               </div>
             );
           })}
+
           {grouped.size === 0 && (
             <div className="p-4 text-gray-600 bg-white border border-gray-200 rounded-lg">
               No employee lists found for this store.
@@ -132,7 +170,10 @@ export const ProfilePage: React.FC = () => {
     (async () => {
       try {
         setLoadingRole(true);
-        if (!user) { setRole(null); return; }
+        if (!user) {
+          setRole(null);
+          return;
+        }
         const { data, error } = await supabase
           .from('profiles')
           .select('role')
@@ -146,7 +187,9 @@ export const ProfilePage: React.FC = () => {
         if (alive) setLoadingRole(false);
       }
     })();
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, [user]);
 
   const isManager = role === 'manager';
@@ -155,11 +198,13 @@ export const ProfilePage: React.FC = () => {
     <div className="min-h-screen bg-gray-50 flex flex-col pb-16">
       <Header title="Profile" />
       <main className="flex-1 p-4 space-y-6">
-        {/* Your account card */}
+        {/* Account card */}
         <div className="bg-white border border-gray-200 rounded-lg p-4">
           <div className="font-semibold text-gray-900 mb-1">Account</div>
           <div className="text-sm text-gray-600">User: {user?.email}</div>
-          <div className="text-sm text-gray-600">Role: {loadingRole ? 'loading…' : (role ?? '—')}</div>
+          <div className="text-sm text-gray-600">
+            Role: {loadingRole ? 'loading…' : role ?? '—'}
+          </div>
         </div>
 
         {/* Manager tools (only for managers) */}
