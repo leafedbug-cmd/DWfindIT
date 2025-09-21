@@ -12,8 +12,8 @@ import { ScanPage } from './pages/ScanPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { InventoryPage } from './pages/InventoryPage';
 
-// use your WorkOrderPage component for plural /work-orders
-import { WorkOrderPage } from './pages/WorkOrderPage';
+// plural page file (default export)
+import WorkOrdersPage from './pages/WorkOrdersPage';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, isLoading } = useAuthStore();
@@ -27,13 +27,11 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
   }
 
   if (!user) return <Navigate to="/login" replace />;
-
   return <>{children}</>;
 };
 
 function App() {
   const { refreshSession } = useAuthStore();
-
   useEffect(() => { refreshSession(); }, [refreshSession]);
 
   return (
@@ -49,8 +47,8 @@ function App() {
           <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
           <Route path="/inventory" element={<ProtectedRoute><InventoryPage /></ProtectedRoute>} />
 
-          {/* unified work-orders route */}
-          <Route path="/work-orders" element={<ProtectedRoute><WorkOrderPage /></ProtectedRoute>} />
+          {/* unified work-orders route (plural) */}
+          <Route path="/work-orders" element={<ProtectedRoute><WorkOrdersPage /></ProtectedRoute>} />
           {/* legacy singular path just redirects */}
           <Route path="/work-order" element={<Navigate to="/work-orders" replace />} />
 
@@ -62,3 +60,4 @@ function App() {
 }
 
 export default App;
+
