@@ -1,92 +1,178 @@
 // src/pages/ProfilePage.tsx
-import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Header } from '../components/Header';
 import { BottomNav } from '../components/BottomNav';
-import { useAuthStore } from '../store/authStore';
+import { supabase } from '../services/supabase';
 import { useStore } from '../contexts/StoreContext';
-import { LogOut, User, MapPin } from 'lucide-react';
+import { useAuthStore } from '../store/authStore';
+import { ChevronRight } from 'lucide-react';
 
-// A list of available stores. In a real app, you might fetch this from a 'stores' table.
-const availableStores = ["01", "02", "03", "04", "05", "06", "07", "08"];
+type ListRow = { id: string; name: string; user_id: string; store_location: string | null; updated_at: string | null; };
+type ProfileRow = { id: string; full_name?: string | null; email?: string | null; role?: string | null; };
+
+const ManagerSection: React.FC = () => {
+  const { selectedStore } = useStore();
+  const [lists, setLists] = useState<ListRow[]>([]);
+  const [profiles, setProfiles] = useState<Record<string, ProfileRow>>({});
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        setLoading(true); setErr(null);
+
+        const { data: listData, error: listErr } = await supabase
+          .from('lists')
+          .select('id, name, user_id, store_location, updated_at')
+          .eq('store_location', selectedStore);
+
+        if (listErr) throw listErr;
+        if (!alive) return;
+        setLists(listData || []);
+
+        const userIds = Array.from(new Set((listData || []).map(l => l.user_id)));
+        if (userIds.length) {
+          const { data: profData } = await supabase
+            .from('profiles')
+            .select('id, full_name, email, role')
+            .in('id', userIds as string[]);
+          const byId: Record<string, ProfileRow> = {};
+          for (const p of (profData || [])) byId[p.id] = p;
+          if (alive) setProfiles(byId);
+        }
+      } catch (e: any) {
+        if (alive) setErr(e.message || String(e));
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, [selectedStore]);
+
+  const grouped = useMemo(() => {
+    const m = new Map<string, ListRow[]>();
+    for (const l of lists) { if (!m.has(l.user_id)) m.set(l.user_id, []); m.get(l.user_id)!.push(l); }
+    return m;
+  }, [lists]);
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-lg bg-white border border-gray-200 p-4">
+        <p className="text-sm text-gray-600">
+          Store: <span className="font-medium">{selectedStore}</span>
+        </p>
+      </div>
+
+      {loading && <div className="p-4 bg-blue-50 text-blue-700 rounded">Loading…</div>}
+      {err && <div className="p-4 bg-red-100 text-red-700 rounded">{err}</div>}
+
+      {!loading && !err && (
+        <>
+          {[...grouped.entries()].map(([userId, userLists]) => {
+            const p = profiles[userId];
+            const title = p?.full_name || p?.email || userId;
+            const open = userId === expanded;
+            return (
+              <div key={userId} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                <button
+                  onClick={() => setExpanded(open ? null : userId)}
+                  className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50"
+                >
+                  <div>
+                    <div className="font-semibold text-gray-900">{title}</div>
+                    <div className="text-xs text-gray-500">
+                      {userLists.length} list{userLists.length !== 1 ? 's' : ''} in {selectedStore}
+                      {p?.role ? ` • role: ${p.role}` : ''}
+                    </div>
+                  </div>
+                  <ChevronRight className={`h-4 w-4 transition-transform ${open ? 'rotate-90' : ''}`} />
+                </button>
+
+                {open && (
+                  <div className="border-t border-gray-200 divide-y">
+                    {userLists.map(l => (
+                      <div key={l.id} className="flex items-center justify-between px-4 py-3">
+                        <div>
+                          <div className="text-sm font-medium">{l.name}</div>
+                          <div className="text-xs text-gray-500">
+                            Updated {l.updated_at ? new Date(l.updated_at).toLocaleString() : '—'}
+                          </div>
+                        </div>
+                        <a href={`/list/${l.id}`} className="text-orange-600 text-sm font-medium hover:underline">
+                          View
+                        </a>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {grouped.size === 0 && (
+            <div className="p-4 text-gray-600 bg-white border border-gray-200 rounded-lg">
+              No employee lists found for this store.
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+};
 
 export const ProfilePage: React.FC = () => {
-  const navigate = useNavigate();
-  const { user, signOut } = useAuthStore();
-  const { selectedStore, setSelectedStore, isLoading: isStoreLoading } = useStore();
+  const { user } = useAuthStore();
+  const [role, setRole] = useState<string | null>(null);
+  const [loadingRole, setLoadingRole] = useState(true);
 
-  const handleSignOut = async () => {
-    await signOut();
-    navigate('/login', { replace: true });
-  };
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        setLoadingRole(true);
+        if (!user) { setRole(null); return; }
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', user.id)
+          .maybeSingle();
+        if (error) throw error;
+        if (alive) setRole(data?.role ?? null);
+      } catch {
+        if (alive) setRole(null);
+      } finally {
+        if (alive) setLoadingRole(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, [user]);
 
-  const handleStoreChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setSelectedStore(e.target.value);
-  };
-
-  // This prevents the white screen crash.
-  // It shows a loading indicator while the user's profile and store are being fetched.
-  if (isStoreLoading || !user) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600"></div>
-      </div>
-    );
-  }
+  const isManager = role === 'manager';
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col pb-16">
       <Header title="Profile" />
-
       <main className="flex-1 p-4 space-y-6">
-        {/* User Info Card */}
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 flex items-center space-x-4">
-          <div className="bg-orange-100 p-3 rounded-full">
-            <User className="h-8 w-8 text-orange-600" />
-          </div>
-          <div>
-            <p className="text-sm text-gray-500">Logged in as</p>
-            <h2 className="text-lg font-semibold text-gray-900">{user.email}</h2>
-          </div>
+        {/* Your account card */}
+        <div className="bg-white border border-gray-200 rounded-lg p-4">
+          <div className="font-semibold text-gray-900 mb-1">Account</div>
+          <div className="text-sm text-gray-600">User: {user?.email}</div>
+          <div className="text-sm text-gray-600">Role: {loadingRole ? 'loading…' : (role ?? '—')}</div>
         </div>
 
-        {/* Store Selector Card */}
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <div className="flex items-center space-x-4">
-            <div className="bg-blue-100 p-3 rounded-full">
-              <MapPin className="h-8 w-8 text-blue-600" />
-            </div>
-            <div>
-              <label htmlFor="store-select" className="text-sm text-gray-500">
-                Your current store location
-              </label>
-              <select
-                id="store-select"
-                value={selectedStore || ''}
-                onChange={handleStoreChange}
-                className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-orange-500 focus:border-orange-500 sm:text-lg rounded-md font-semibold"
-              >
-                {availableStores.map(store => (
-                  <option key={store} value={store}>
-                    Store #{store}
-                  </option>
-                ))}
-              </select>
-            </div>
+        {/* Manager tools (only for managers) */}
+        {isManager && (
+          <div className="space-y-3">
+            <div className="text-xs uppercase tracking-wide text-gray-500">Manager</div>
+            <ManagerSection />
           </div>
-        </div>
-
-        {/* Sign Out Button */}
-        <button
-          onClick={handleSignOut}
-          className="w-full flex items-center justify-center p-4 bg-red-50 text-red-600 rounded-lg font-medium hover:bg-red-100 transition-colors"
-        >
-          <LogOut className="h-5 w-5 mr-2" />
-          Sign Out
-        </button>
+        )}
       </main>
-
       <BottomNav />
     </div>
   );
 };
+
+export default ProfilePage;
