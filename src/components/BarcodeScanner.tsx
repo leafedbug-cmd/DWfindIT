@@ -8,6 +8,7 @@ interface BarcodeScannerProps {
 }
 
 const SCAN_COOLDOWN_MS = 3000; // 3s cooldown for duplicate scans
+const SWITCH_DELAY_MS = 200;   // tiny pause to let video/DOM settle
 
 export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, onScanError }) => {
   const [cameras, setCameras] = useState<any[]>([]);
@@ -17,6 +18,7 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, o
   const [initializationStatus, setInitializationStatus] = useState<string>('Initializing...');
   const [isScanning, setIsScanning] = useState<boolean>(false);
   const [cooldownRemaining, setCooldownRemaining] = useState<number>(0);
+  const [isSwitching, setIsSwitching] = useState<boolean>(false); // NEW: serialize transitions
 
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
   const lastScanned = useRef<string>('');
@@ -38,24 +40,38 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, o
     }, 1000);
   };
 
-  const stopScanner = useCallback(async () => {
-    if (html5QrCodeRef.current) {
-      try {
-        await html5QrCodeRef.current.stop();
-      } catch {
-        // ignore
-      }
+  const ensureInstance = () => {
+    // Some browsers/devices need a fresh instance after stop()
+    if (!html5QrCodeRef.current) {
+      html5QrCodeRef.current = new Html5Qrcode('reader');
     }
-    setIsScanning(false);
+  };
+
+  const stopScanner = useCallback(async () => {
+    if (!html5QrCodeRef.current) return;
+    try {
+      await html5QrCodeRef.current.stop();
+      // html5-qrcode sometimes keeps stale video; clearing helps avoid "width is 0"
+      await html5QrCodeRef.current.clear().catch(() => {});
+    } catch {
+      // ignore
+    } finally {
+      setIsScanning(false);
+    }
   }, []);
 
   const startScanner = useCallback(async () => {
-    if (!html5QrCodeRef.current || !selectedCameraId || isScanning || !mountedRef.current) return;
+    if (!mountedRef.current) return;
+    if (!selectedCameraId) return;
+    if (isScanning) return;
+
+    ensureInstance();
+    const inst = html5QrCodeRef.current;
+    if (!inst) return;
 
     setIsScanning(true);
     try {
-      // iOS-friendly: pass constraints object instead of plain string
-      await html5QrCodeRef.current.start(
+      await inst.start(
         { deviceId: { exact: selectedCameraId } },
         {
           fps: 10,
@@ -73,7 +89,6 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, o
           lastScanned.current = decodedText;
           lastScanTime.current = now;
 
-          // Visual flash
           const reader = document.getElementById('reader');
           if (reader) {
             (reader as HTMLElement).style.border = '4px solid #10b981';
@@ -86,7 +101,7 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, o
           startCooldown();
         },
         errorMessage => {
-          // Normal “not found” noise is fine; report only meaningful errors
+          // Noise filter: only log interesting errors
           if (
             !errorMessage.includes('NotFoundException') &&
             !errorMessage.includes('No MultiFormat Readers')
@@ -116,13 +131,9 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, o
       try {
         setInitializationStatus('Checking for camera access...');
 
-        // Ensure container exists
         const readerElement = document.getElementById('reader');
-        if (!readerElement) {
-          throw new Error('Scanner container not found in DOM');
-        }
+        if (!readerElement) throw new Error('Scanner container not found in DOM');
 
-        // Clean any previous instance
         if (html5QrCodeRef.current) {
           try {
             await html5QrCodeRef.current.stop();
@@ -130,7 +141,7 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, o
           html5QrCodeRef.current = null;
         }
 
-        html5QrCodeRef.current = new Html5Qrcode('reader');
+        ensureInstance();
 
         setInitializationStatus('Requesting camera permissions...');
         const devices = await Html5Qrcode.getCameras();
@@ -140,7 +151,6 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, o
         if (devices.length) {
           setCameras(devices);
 
-          // Prefer back/environment camera if label hints at it
           const backCamera =
             devices.find(d => /back|environment|rear/i.test(d.label)) ?? devices[0];
 
@@ -173,39 +183,57 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, o
 
   // Auto-start when ready
   useEffect(() => {
-    if (selectedCameraId && isInitialized && !isScanning && !error && mountedRef.current) {
+    if (selectedCameraId && isInitialized && !isScanning && !error && mountedRef.current && !isSwitching) {
       startScanner();
     }
-  }, [selectedCameraId, isInitialized, isScanning, error, startScanner]);
+  }, [selectedCameraId, isInitialized, isScanning, error, isSwitching, startScanner]);
+
+  // NEW: safe switch that serializes stop→wait→(re)create→start
+  const safeSwitchTo = useCallback(
+    async (id: string) => {
+      if (isSwitching) return;
+      setIsSwitching(true);
+
+      try {
+        await stopScanner();
+        await new Promise(res => setTimeout(res, SWITCH_DELAY_MS));
+        // Recreate the instance to avoid "InvalidStateError / source width is 0"
+        html5QrCodeRef.current = null;
+        ensureInstance();
+        setSelectedCameraId(id); // triggers auto-start effect
+      } finally {
+        // Let the effect kick startScanner; give it a tiny window first
+        setTimeout(() => setIsSwitching(false), SWITCH_DELAY_MS);
+      }
+    },
+    [isSwitching, stopScanner]
+  );
 
   const handleCameraChange = async (id: string) => {
-    await stopScanner();
-    setSelectedCameraId(id);
+    // Users may tap quickly; this guards against state-transition clashes
+    await safeSwitchTo(id);
   };
 
   const handleRetry = async () => {
     setError(null);
     setIsInitialized(false);
     setInitializationStatus('Retrying...');
-    await stopScanner();
-    // Soft re-init without full reload
-    try {
-      if (html5QrCodeRef.current) {
-        await html5QrCodeRef.current.stop().catch(() => {});
-        html5QrCodeRef.current = null;
+    await safeSwitchTo(selectedCameraId || '');
+    // If none selected (rare), just re-run the init flow:
+    if (!selectedCameraId) {
+      try {
+        const devices = await Html5Qrcode.getCameras();
+        if (!devices.length) throw new Error('No cameras found on this device');
+        const backCamera =
+          devices.find(d => /back|environment|rear/i.test(d.label)) ?? devices[0];
+        setCameras(devices);
+        setSelectedCameraId(backCamera.id);
+        setIsInitialized(true);
+        setInitializationStatus('Camera ready!');
+      } catch (e: any) {
+        setError(e?.message || String(e));
+        onScanError?.(e?.message || String(e));
       }
-      html5QrCodeRef.current = new Html5Qrcode('reader');
-      const devices = await Html5Qrcode.getCameras();
-      if (!devices.length) throw new Error('No cameras found on this device');
-      const backCamera =
-        devices.find(d => /back|environment|rear/i.test(d.label)) ?? devices[0];
-      setCameras(devices);
-      setSelectedCameraId(backCamera.id);
-      setIsInitialized(true);
-      setInitializationStatus('Camera ready!');
-    } catch (e: any) {
-      setError(e?.message || String(e));
-      onScanError?.(e?.message || String(e));
     }
   };
 
@@ -255,6 +283,7 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, o
             value={selectedCameraId}
             onChange={e => handleCameraChange(e.target.value)}
             className="w-full p-2 border border-gray-300 rounded-md focus:ring-orange-500 focus:border-orange-500"
+            disabled={isSwitching}
           >
             {cameras.map(device => (
               <option key={device.id} value={device.id}>
@@ -262,6 +291,9 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, o
               </option>
             ))}
           </select>
+          {isSwitching && (
+            <div className="text-xs text-gray-500 mt-1">Switching cameras…</div>
+          )}
         </div>
       )}
 
@@ -275,7 +307,6 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, o
           transition: 'border 0.3s ease',
           backgroundColor: isInitialized ? 'black' : '#f3f4f6',
         }}
-        // Html5Qrcode renders its own <video>; iOS likes inline playback on that element.
       />
 
       {/* Status messages */}
@@ -295,7 +326,9 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, o
       )}
 
       {!isScanning && isInitialized && (
-        <div className="text-center mt-3 text-sm text-gray-500">Camera ready - waiting for barcode</div>
+        <div className="text-center mt-3 text-sm text-gray-500">
+          Camera ready - waiting for barcode
+        </div>
       )}
     </div>
   );
