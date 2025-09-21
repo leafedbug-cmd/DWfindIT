@@ -12,11 +12,14 @@ import { ScanPage } from './pages/ScanPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { InventoryPage } from './pages/InventoryPage';
 
-import { ManagerPage } from './pages/ManagerPage';
-import { WorkOrdersPage } from './pages/WorkOrdersPage'; // NEW
+// NEW plural import
+import WorkOrdersPage from './pages/WorkOrdersPage';
+// If you've added ManagerPage, also import it:
+// import { ManagerPage } from './pages/ManagerPage';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, isLoading } = useAuthStore();
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-50">
@@ -45,11 +48,12 @@ function App() {
           <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
           <Route path="/inventory" element={<ProtectedRoute><InventoryPage /></ProtectedRoute>} />
 
-          {/* NEW tabs */}
+          {/* NEW plural route */}
           <Route path="/work-orders" element={<ProtectedRoute><WorkOrdersPage /></ProtectedRoute>} />
-          <Route path="/manager" element={<ProtectedRoute><ManagerPage /></ProtectedRoute>} />
+          {/* Optional manager route if you created the page */}
+          {/* <Route path="/manager" element={<ProtectedRoute><ManagerPage /></ProtectedRoute>} /> */}
 
-          {/* Legacy redirect (singular -> plural) */}
+          {/* legacy redirect (singular -> plural) */}
           <Route path="/work-order" element={<Navigate to="/work-orders" replace />} />
 
           <Route path="*" element={<Navigate to="/" replace />} />

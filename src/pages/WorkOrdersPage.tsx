@@ -1,4 +1,4 @@
-// src/pages/WorkOrderPage.tsx
+// src/pages/WorkOrdersPage.tsx
 import React, { useEffect, useRef, useState } from "react";
 import { Header } from "../components/Header";
 import { BottomNav } from "../components/BottomNav";
@@ -16,7 +16,7 @@ function pick<T = string>(row: AnyRow | null, keys: string[], fallback: T | "" =
   return fallback;
 }
 
-export const WorkOrderPage: React.FC = () => {
+const WorkOrdersPage: React.FC = () => {
   const [isScanning, setIsScanning] = useState(false);
   const [row, setRow] = useState<AnyRow | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -119,9 +119,9 @@ export const WorkOrderPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      <Header title="Work Order" />
-      <main className="p-4 pb-28 space-y-4">
+    <div className="min-h-screen bg-gray-50 flex flex-col pb-16">
+      <Header title="Work Orders" />
+      <main className="p-4 pb-6 space-y-4">
         <button
           className="px-3 py-2 rounded bg-black text-white flex items-center gap-2"
           onClick={openScanner}
@@ -175,3 +175,5 @@ export const WorkOrderPage: React.FC = () => {
     </div>
   );
 };
+
+export default WorkOrdersPage;
