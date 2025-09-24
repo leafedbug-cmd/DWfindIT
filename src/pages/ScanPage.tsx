@@ -3,7 +3,7 @@
 // Tapping the pill’s main value opens the phone keyboard (readOnly <input> with auto-select)
 
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom'; // <-- ADDED useParams
 import { BarcodeScanner } from '../components/BarcodeScanner';
 import { ScanResult } from '../components/ScanResult';
 import { Header } from '../components/Header';
@@ -39,6 +39,7 @@ type EquipmentRow = {
 type ScanRow = PartRow | EquipmentRow;
 
 export const ScanPage: React.FC = () => {
+  const { listId } = useParams<{ listId: string }>(); // <-- ADDED: Get listId from URL
   const navigate = useNavigate();
   const { selectedStore, isLoading: isStoreLoading } = useStore();
   const { lists, fetchLists, currentList, setCurrentList } = useListStore();
@@ -64,6 +65,17 @@ export const ScanPage: React.FC = () => {
       setCurrentList(lists[0]);
     }
   }, [lists, currentList, setCurrentList]);
+  
+  // <-- ADDED: This entire block synchronizes the store with the URL
+  // This is the main fix for the bug.
+  useEffect(() => {
+    if (listId && lists.length > 0) {
+      const listFromUrl = lists.find(list => list.id === listId);
+      if (listFromUrl) {
+        setCurrentList(listFromUrl);
+      }
+    }
+  }, [listId, lists, setCurrentList]);
 
   // -------- Scan handler --------
   const handleScan = useCallback(
