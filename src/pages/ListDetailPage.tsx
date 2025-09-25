@@ -4,7 +4,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Header } from '../components/Header';
 import { BottomNav } from '../components/BottomNav';
 import { useListStore } from '../store/listStore';
-import { useScanItemStore } from '../store/scanItemStore';
+// FIXED: Import the correct store with the correct name
+import { useListItemStore } from '../store/listItemStore';
 import { Trash2, Plus } from 'lucide-react';
 import { generateCSV, generatePDF } from '../utils/export';
 
@@ -13,7 +14,8 @@ export const ListDetailPage: React.FC = () => {
   const navigate = useNavigate();
 
   const { lists } = useListStore();
-  const { items, isLoading, error, fetchItems, deleteItem } = useScanItemStore();
+  // FIXED: Use the correct store hook
+  const { items, isLoading, error, fetchItems, deleteItem } = useListItemStore();
 
   const currentList = lists.find((list) => list.id === listId);
 
@@ -44,6 +46,7 @@ export const ListDetailPage: React.FC = () => {
   const goToScanAuto = () => {
     if (!listId) return;
     // auto=1 tells Scan page to auto-start the camera
+    // This correctly sends the listId as a query parameter
     navigate(`/scan?list=${encodeURIComponent(listId)}&auto=1`);
   };
 
