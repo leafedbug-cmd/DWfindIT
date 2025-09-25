@@ -1,36 +1,55 @@
 // src/components/BottomNav.tsx
 import React from 'react';
-import { NavLink } from 'react-router-dom';
-import { Home, List, ScanBarcode, User, FileText } from 'lucide-react';
-
-const tabClass = ({ isActive }: { isActive: boolean }) =>
-  `flex flex-col items-center justify-center min-w-0
-   ${isActive ? 'text-orange-600' : 'text-gray-500'}`;
+import { Link, useLocation } from 'react-router-dom';
+import { Home, List, ScanLine, User } from 'lucide-react'; // ADDED: List, ScanLine
 
 export const BottomNav: React.FC = () => {
+  const location = useLocation();
+  
+  const isActive = (path: string) => {
+    return location.pathname === path;
+  };
+  
   return (
-    <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-40">
-      <div className="mx-auto grid grid-cols-5">
-        <NavLink to="/" className={tabClass} aria-label="Home">
-          <div className="h-9 flex items-center justify-center"><Home size={18} /></div>
-          <span className="text-[10px] leading-tight truncate pb-1">Home</span>
-        </NavLink>
-        <NavLink to="/lists" className={tabClass} aria-label="Lists">
-          <div className="h-9 flex items-center justify-center"><List size={18} /></div>
-          <span className="text-[10px] leading-tight truncate pb-1">Lists</span>
-        </NavLink>
-        <NavLink to="/scan" className={tabClass} aria-label="Scan">
-          <div className="h-9 flex items-center justify-center"><ScanBarcode size={19} /></div>
-          <span className="text-[10px] leading-tight truncate pb-1">Scan</span>
-        </NavLink>
-        <NavLink to="/work-orders" className={tabClass} aria-label="Work Orders">
-          <div className="h-9 flex items-center justify-center"><FileText size={18} /></div>
-          <span className="text-[10px] leading-tight truncate pb-1">Work</span>
-        </NavLink>
-        <NavLink to="/profile" className={tabClass} aria-label="Profile">
-          <div className="h-9 flex items-center justify-center"><User size={18} /></div>
-          <span className="text-[10px] leading-tight truncate pb-1">Profile</span>
-        </NavLink>
+    <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg z-10">
+      <div className="flex justify-around items-center h-16">
+        <Link
+          to="/"
+          className={`flex flex-col items-center px-4 py-2 font-medium text-sm 
+            ${isActive('/') ? 'text-orange-600' : 'text-gray-500 hover:text-gray-900'}`}
+        >
+          <Home className={`h-6 w-6 ${isActive('/') ? 'text-orange-600' : 'text-gray-500'}`} />
+          <span className="mt-1">Home</span>
+        </Link>
+        
+        {/* ADDED: Link to /lists */}
+        <Link
+          to="/lists"
+          className={`flex flex-col items-center px-4 py-2 font-medium text-sm 
+            ${isActive('/lists') || location.pathname.includes('/list/') ? 'text-orange-600' : 'text-gray-500 hover:text-gray-900'}`}
+        >
+          <List className={`h-6 w-6 ${isActive('/lists') || location.pathname.includes('/list/') ? 'text-orange-600' : 'text-gray-500'}`} />
+          <span className="mt-1">Lists</span>
+        </Link>
+        
+        {/* ADDED: Link to /scan */}
+        <Link
+          to="/scan"
+          className={`flex flex-col items-center px-4 py-2 font-medium text-sm 
+            ${isActive('/scan') ? 'text-orange-600' : 'text-gray-500 hover:text-gray-900'}`}
+        >
+          <ScanLine className={`h-6 w-6 ${isActive('/scan') ? 'text-orange-600' : 'text-gray-500'}`} />
+          <span className="mt-1">Scan</span>
+        </Link>
+        
+        <Link
+          to="/profile"
+          className={`flex flex-col items-center px-4 py-2 font-medium text-sm 
+            ${isActive('/profile') ? 'text-orange-600' : 'text-gray-500 hover:text-gray-900'}`}
+        >
+          <User className={`h-6 w-6 ${isActive('/profile') ? 'text-orange-600' : 'text-gray-500'}`} />
+          <span className="mt-1">Profile</span>
+        </Link>
       </div>
     </nav>
   );
