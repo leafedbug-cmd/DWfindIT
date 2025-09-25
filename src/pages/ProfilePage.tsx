@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Header } from '../components/Header';
 import { BottomNav } from '../components/BottomNav';
-import { supabase } from '../services/supabase';
+import { supabase } from '../services/supabaseClient'; // FIXED: Corrected the import path
 import { useStore } from '../contexts/StoreContext';
 import { useAuthStore } from '../store/authStore';
 import { ChevronRight } from 'lucide-react';
