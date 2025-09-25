@@ -2,24 +2,18 @@
 import { create } from 'zustand';
 import { supabase } from '../services/supabase';
 
-// Type representing a list with an optional count of related scan items.
-// `scan_items` comes directly from Supabase and its shape may vary depending on
-// the query. We therefore normalise the count into `item_count` for easier use
-// within the UI.
+// Type representing a list with a normalized count of its items.
 export interface ListWithCount {
   id: string;
   created_at: string;
   name: string;
   user_id: string;
-  // Raw `scan_items` relation from Supabase; structure can be an array of
-  // items or an array/object containing a `count` property.
-  scan_items: unknown;
-  // Normalised count of related items.
+  // This is the normalized count for easier UI use.
   item_count: number;
 }
 
 interface ListState {
-  lists: ListWithCount[]; // Use the new type
+  lists: ListWithCount[];
   isLoading: boolean;
   error: string | null;
   currentList: ListWithCount | null;
@@ -29,7 +23,20 @@ interface ListState {
   setCurrentList: (list: ListWithCount | null) => void;
 }
 
-export const useListStore = create<ListState>((set) => ({
+// Helper function to normalize the count from Supabase's response
+const getNormalizedItemCount = (list: any): number => {
+  if (!list || !list.scan_items) {
+    return 0;
+  }
+  // Supabase returns the count in an array like `[{ "count": 5 }]`
+  if (Array.isArray(list.scan_items) && list.scan_items[0] && typeof list.scan_items[0].count === 'number') {
+    return list.scan_items[0].count;
+  }
+  return 0;
+};
+
+
+export const useListStore = create<ListState>((set, get) => ({
   lists: [],
   isLoading: false,
   error: null,
@@ -37,77 +44,69 @@ export const useListStore = create<ListState>((set) => ({
   setCurrentList: (list) => set({ currentList: list }),
 
   fetchLists: async () => {
+    set({ isLoading: true, error: null });
     try {
-      set({ isLoading: true, error: null });
-
-      // --- MODIFIED QUERY TO COUNT ITEMS ---
       const { data, error } = await supabase
         .from('lists')
-        // 'scan_items(count)' tells Supabase to count related items
-        .select('*, scan_items(count)')
+        .select('*, scan_items(count)') // Correctly counts related items
         .order('created_at', { ascending: false });
 
       if (error) throw error;
 
-      const lists = (data || []).map((list) => {
-        const scanItems = (list as { scan_items: unknown }).scan_items;
-        const item_count = Array.isArray(scanItems)
-          ? (typeof (scanItems[0] as { count?: number })?.count === 'number'
-              ? (scanItems[0] as { count?: number }).count!
-              : scanItems.length)
-          : (typeof (scanItems as { count?: number } | undefined)?.count === 'number'
-              ? (scanItems as { count: number }).count
-              : 0);
-        return { ...list, item_count } as ListWithCount;
-      });
+      // Normalize the data for the UI
+      const lists: ListWithCount[] = (data || []).map((list) => ({
+        id: list.id,
+        created_at: list.created_at,
+        name: list.name,
+        user_id: list.user_id,
+        item_count: getNormalizedItemCount(list),
+      }));
 
-      set((state) => ({
+      set({
         lists,
         isLoading: false,
-        currentList: state.currentList || lists[0] || null,
-      }));
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      set({ error: message, isLoading: false });
+        // If no list is currently selected, default to the first one
+        currentList: get().currentList || lists[0] || null,
+      });
+    } catch (error: any) {
+      set({ error: error.message, isLoading: false });
     }
   },
 
   createList: async (name: string) => {
+    set({ isLoading: true, error: null });
     try {
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) throw new Error('User not authenticated');
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('User not authenticated');
 
       const { data, error } = await supabase
         .from('lists')
-        .insert([{ name, user_id: userData.user.id }])
-        .select('*, scan_items(count)') // Also count items on creation
+        .insert({ name, user_id: user.id })
+        .select() // No need to count on creation, it will be 0
         .single();
 
       if (error) throw error;
+      if (!data) throw new Error('Failed to create list.');
 
-      const scanItems = (data as { scan_items: unknown }).scan_items;
-      const item_count = Array.isArray(scanItems)
-        ? (typeof (scanItems[0] as { count?: number })?.count === 'number'
-            ? (scanItems[0] as { count?: number }).count!
-            : scanItems.length)
-        : (typeof (scanItems as { count?: number } | undefined)?.count === 'number'
-            ? (scanItems as { count: number }).count
-            : 0);
+      // Manually shape the new list to match our interface
+      const newList: ListWithCount = {
+        ...data,
+        item_count: 0,
+      };
 
-      const newList: ListWithCount = { ...(data as object), scan_items: scanItems, item_count } as ListWithCount;
-
-      set((state) => ({ lists: [newList, ...state.lists] }));
+      set((state) => ({
+        lists: [newList, ...state.lists],
+        isLoading: false,
+      }));
       return newList;
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      set({ error: message });
+    } catch (error: any) {
+      set({ error: error.message, isLoading: false });
       return null;
     }
   },
 
   deleteList: async (id: string) => {
     try {
-      set({ isLoading: true, error: null });
       const { error } = await supabase
         .from('lists')
         .delete()
@@ -115,14 +114,14 @@ export const useListStore = create<ListState>((set) => ({
 
       if (error) throw error;
 
-      // Update the local state immediately for a fast UI response
+      // Update local state for a responsive UI
       set((state) => ({
-        lists: state.lists.filter(list => list.id !== id),
-        isLoading: false
+        lists: state.lists.filter((list) => list.id !== id),
+        // If the deleted list was the current one, clear it
+        currentList: state.currentList?.id === id ? null : state.currentList,
       }));
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      set({ error: message, isLoading: false });
+    } catch (error: any) {
+      set({ error: error.message });
     }
   },
 }));
