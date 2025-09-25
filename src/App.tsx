@@ -6,11 +6,7 @@ import { StoreProvider } from './contexts/StoreContext';
 import { LoginPage } from './pages/LoginPage';
 import { HomePage } from './pages/HomePage';
 import { ProfilePage } from './pages/ProfilePage';
-// ADDED: Import the new pages
-import { ListsPage } from './pages/ListsPage';
-import { ListDetailPage } from './pages/ListDetailPage';
-import { ScanPage } from './pages/ScanPage';
-
+// REMOVED: Imports for ListsPage, ListDetailPage, and ScanPage
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, isLoading } = useAuthStore();
@@ -51,7 +47,7 @@ function App() {
               </ProtectedRoute>
             }
           />
-          
+
           <Route
             path="/profile"
             element={
@@ -61,33 +57,7 @@ function App() {
             }
           />
 
-          {/* ADDED: Routes for the new list functionality */}
-          <Route
-            path="/lists"
-            element={
-              <ProtectedRoute>
-                <ListsPage />
-              </ProtectedRoute>
-            }
-          />
-
-          <Route
-            path="/list/:id"
-            element={
-              <ProtectedRoute>
-                <ListDetailPage />
-              </ProtectedRoute>
-            }
-          />
-
-          <Route
-            path="/scan"
-            element={
-              <ProtectedRoute>
-                <ScanPage />
-              </ProtectedRoute>
-            }
-          />
+          {/* REMOVED Routes for /lists, /list/:id, and /scan */}
           
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
