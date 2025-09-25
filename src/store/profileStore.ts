@@ -1,6 +1,6 @@
 // src/store/profileStore.ts
 import { create } from 'zustand';
-import { supabase } from '../services/supabase';
+import { supabase } from '../services/supabaseClient'; // FIXED: Corrected the import path
 
 // Define a type for your profile data
 interface Profile {
