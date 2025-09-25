@@ -1,6 +1,7 @@
 // src/store/authStore.ts
 import { create } from 'zustand'
-import { supabase } from '../services/supabase'
+// FIXED: Import the client from the new file
+import { supabase } from '../services/supabaseClient' 
 import type { User, Session } from '@supabase/supabase-js'
 
 interface AuthState {
@@ -9,7 +10,7 @@ interface AuthState {
   isLoading: boolean
   error: string | null
   signIn: (email: string, password: string) => Promise<void>
-  signUp: (email: string, password: string) => Promise<void>
+  signUp: (email: string, password:string) => Promise<void>
   signOut: () => Promise<void>
   refreshSession: () => Promise<void>
 }
@@ -21,7 +22,6 @@ export const useAuthStore = create<AuthState>((set) => {
   // load existing session on startup
   const initAuth = async () => {
     const { data: { session }, error } = await supabase.auth.getSession()
-    console.log('⚡️ auth init →', { session, error })
     set({
       user: session?.user || null,
       session,
@@ -32,9 +32,8 @@ export const useAuthStore = create<AuthState>((set) => {
   initAuth()
 
   // subscribe to auth state changes
-  const { data: { subscription } } = supabase.auth.onAuthStateChange(
+  supabase.auth.onAuthStateChange(
     (event, session) => {
-      console.log('🔄 auth change →', { event, session })
       set({
         user: session?.user || null,
         session,
@@ -51,7 +50,6 @@ export const useAuthStore = create<AuthState>((set) => {
     signIn: async (email, password) => {
       set({ isLoading: true, error: null })
       const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-      console.log('⚡️ signIn →', { data, error })
       if (error) {
         set({ error: error.message })
       } else {
@@ -63,7 +61,6 @@ export const useAuthStore = create<AuthState>((set) => {
     signUp: async (email, password) => {
       set({ isLoading: true, error: null })
       const { data, error } = await supabase.auth.signUp({ email, password })
-      console.log('⚡️ signUp →', { data, error })
       if (error) {
         set({ error: error.message })
       } else {
@@ -75,7 +72,6 @@ export const useAuthStore = create<AuthState>((set) => {
     signOut: async () => {
       set({ isLoading: true, error: null })
       const { error } = await supabase.auth.signOut()
-      console.log('⚡️ signOut →', { error })
       if (error) {
         set({ error: error.message })
       } else {
@@ -87,7 +83,6 @@ export const useAuthStore = create<AuthState>((set) => {
     refreshSession: async () => {
       set({ isLoading: true, error: null })
       const { data: { session }, error } = await supabase.auth.getSession()
-      console.log('⚡️ refreshSession →', { session, error })
       if (error) {
         set({ error: error.message })
       } else {

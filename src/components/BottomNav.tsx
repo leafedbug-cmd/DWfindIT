@@ -32,7 +32,7 @@ export const BottomNav: React.FC = () => {
           <span className="mt-1">Lists</span>
         </Link>
         
-        {/* ADDED: Link to /scan */}
+        {/* ADDED: Link to /scan. This will go to the generic scan page. */}
         <Link
           to="/scan"
           className={`flex flex-col items-center px-4 py-2 font-medium text-sm 

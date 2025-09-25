@@ -1,16 +1,16 @@
 // src/pages/ScanPage.tsx
 import React, { useState, useCallback, useMemo } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Header } from '../components/Header';
 import { BottomNav } from '../components/BottomNav';
 import { BarcodeScanner } from '../components/BarcodeScanner';
 import { useListItemStore } from '../store/listItemStore';
-import { supabase } from '../services/supabase';
+import { supabase } from '../services/supabaseClient';
 import { useStore } from '../contexts/StoreContext';
 
 export const ScanPage: React.FC = () => {
-  const navigate = useNavigate();
   const location = useLocation();
+  const navigate = useNavigate();
   const { selectedStore } = useStore();
   const { addItem } = useListItemStore();
 
@@ -24,7 +24,11 @@ export const ScanPage: React.FC = () => {
   }, [location.search]);
 
   const handleScan = useCallback(async (barcode: string) => {
-    if (isProcessing || !listId) return;
+    if (isProcessing) return;
+    if (!listId) {
+      setScanError("No active list. Please go back and select a list first.");
+      return;
+    }
 
     setIsProcessing(true);
     setScanError(null);
@@ -47,6 +51,7 @@ export const ScanPage: React.FC = () => {
         part_number: partData.part_number,
         bin_location: partData.bin_location,
         quantity: 1,
+        notes: '',
       });
 
       if (newItem) {
@@ -59,10 +64,15 @@ export const ScanPage: React.FC = () => {
       setScanError(error.message);
     } finally {
       setIsProcessing(false);
-      setTimeout(() => setScanError(null), 3000);
-      setTimeout(() => setScanSuccess(null), 3000);
+      setTimeout(() => setScanError(null), 3500);
+      setTimeout(() => setScanSuccess(null), 3500);
     }
   }, [isProcessing, listId, selectedStore, addItem]);
+  
+  const goBackToList = () => {
+    if (listId) navigate(`/list/${listId}`);
+    else navigate('/lists');
+  }
 
   return (
     <div className="min-h-screen flex flex-col pb-16 bg-gray-50">
@@ -72,6 +82,13 @@ export const ScanPage: React.FC = () => {
         {isProcessing && <p className="text-center text-gray-500">Processing...</p>}
         {scanError && <div className="p-2 bg-red-100 text-red-800 rounded">{scanError}</div>}
         {scanSuccess && <div className="p-2 bg-green-100 text-green-800 rounded">{scanSuccess}</div>}
+        
+        <button 
+          onClick={goBackToList}
+          className="w-full mt-4 bg-gray-200 text-gray-800 px-4 py-3 rounded-lg font-medium"
+        >
+          Done Scanning
+        </button>
       </main>
       <BottomNav />
     </div>

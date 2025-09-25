@@ -5,7 +5,7 @@ import { Header } from '../components/Header';
 import { BottomNav } from '../components/BottomNav';
 import { Scan, Package, X, ClipboardList } from 'lucide-react'; // ADDED: ClipboardList
 import { Html5Qrcode } from 'html5-qrcode';
-import { supabase } from '../services/supabase';
+import { supabase } from '../services/supabaseClient';
 import { useStore } from '../contexts/StoreContext';
 
 export const HomePage: React.FC = () => {
@@ -118,6 +118,7 @@ export const HomePage: React.FC = () => {
         <div className="mb-8">
           <h2 className="text-xl font-semibold text-gray-900 mb-4">Quick Actions</h2>
           
+          {/* UPDATED: Changed grid to md:grid-cols-3 */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <button
               onClick={handleQuickScan}
@@ -127,7 +128,7 @@ export const HomePage: React.FC = () => {
               <span className="font-medium text-gray-900">Quick Scan</span>
               <span className="text-sm text-gray-500 text-center">Scan to view part info</span>
             </button>
-            
+
             {/* ADDED: "My Lists" button */}
             <button
               onClick={() => navigate('/lists')}
