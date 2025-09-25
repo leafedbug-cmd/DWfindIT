@@ -1,6 +1,6 @@
 // src/store/partsStore.ts
 import { create } from 'zustand';
-import { supabase } from '../services/supabase';
+import { supabase } from '../services/supabaseClient'; // FIXED: Corrected the import path
 import type { Part } from '../services/supabase';
 
 interface PartsState {
