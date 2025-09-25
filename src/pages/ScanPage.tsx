@@ -9,8 +9,8 @@ import { supabase } from '../services/supabaseClient';
 import { useStore } from '../contexts/StoreContext';
 
 export const ScanPage: React.FC = () => {
-  const location = useLocation();
   const navigate = useNavigate();
+  const location = useLocation();
   const { selectedStore } = useStore();
   const { addItem } = useListItemStore();
 
@@ -35,30 +35,55 @@ export const ScanPage: React.FC = () => {
     setScanSuccess(null);
 
     try {
-      const { data: partData, error: partError } = await supabase
-        .from('parts')
-        .select('part_number, bin_location')
-        .eq('part_number', barcode)
-        .eq('store_location', selectedStore)
-        .maybeSingle();
+      // Step 1: Search for the barcode in both tables simultaneously.
+      const [partResult, equipmentResult] = await Promise.all([
+        supabase
+          .from('parts')
+          .select('part_number, bin_location')
+          .eq('part_number', barcode)
+          .eq('store_location', selectedStore)
+          .maybeSingle(),
+        supabase
+          .from('equipment')
+          .select('stock_number, serial_number')
+          .or(`stock_number.eq.${barcode},serial_number.eq.${barcode}`)
+          .maybeSingle(),
+      ]);
+      
+      let newItemPayload: any = null;
 
-      if (partError || !partData) {
-        throw new Error(`Part "${barcode}" not found in store ${selectedStore}.`);
-      }
-
-      const newItem = await addItem({
-        list_id: listId,
-        part_number: partData.part_number,
-        bin_location: partData.bin_location,
-        quantity: 1,
-        notes: '',
-      });
-
-      if (newItem) {
-        setScanSuccess(`Added ${newItem.part_number} to list!`);
+      // Step 2: Determine what was found and prepare the data for the list.
+      if (partResult.data) {
+        // We found a part
+        newItemPayload = {
+          list_id: listId,
+          item_type: 'part',
+          part_number: partResult.data.part_number,
+          bin_location: partResult.data.bin_location,
+          quantity: 1,
+        };
+        setScanSuccess(`Found Part: ${partResult.data.part_number}`);
+      } else if (equipmentResult.data) {
+        // We found a piece of equipment
+        newItemPayload = {
+          list_id: listId,
+          item_type: 'equipment',
+          equipment_stock_number: equipmentResult.data.stock_number,
+          quantity: 1,
+        };
+        setScanSuccess(`Found Equipment: ${equipmentResult.data.stock_number}`);
       } else {
-        throw new Error('Failed to save item.');
+        // Nothing was found
+        throw new Error(`No part or equipment found for barcode "${barcode}" in store ${selectedStore}.`);
       }
+
+      // Step 3: Add the found item to the list.
+      const newItem = await addItem(newItemPayload);
+      if (!newItem) {
+        throw new Error('Failed to save the scanned item to the list.');
+      }
+      
+      setScanSuccess(`Successfully added item to list!`);
 
     } catch (error: any) {
       setScanError(error.message);

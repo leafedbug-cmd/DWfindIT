@@ -4,8 +4,39 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Header } from '../components/Header';
 import { BottomNav } from '../components/BottomNav';
 import { useListStore } from '../store/listStore';
-import { useListItemStore } from '../store/listItemStore';
-import { Trash2, Plus } from 'lucide-react';
+import { useListItemStore, ListItem } from '../store/listItemStore';
+import { Trash2, Plus, Package, Hash } from 'lucide-react';
+
+// A component to render a Part
+const PartItem: React.FC<{ item: ListItem }> = ({ item }) => (
+  <>
+    <Hash className="h-8 w-8 text-gray-400 mr-4" />
+    <div className="flex-grow">
+      <p className="font-semibold text-gray-900">{item.parts?.part_number}</p>
+      <p className="text-sm text-gray-500">Bin: {item.parts?.bin_location}</p>
+      <p className="text-sm text-gray-500">Qty: {item.quantity}</p>
+    </div>
+  </>
+);
+
+// A component to render Equipment, showing the fields you requested
+const EquipmentItem: React.FC<{ item: ListItem }> = ({ item }) => (
+  <>
+    <Package className="h-8 w-8 text-blue-500 mr-4" />
+    <div className="flex-grow">
+      <p className="font-semibold text-gray-900">
+        {item.equipment?.make} {item.equipment?.model}
+      </p>
+      <p className="text-sm text-gray-500">
+        Stock #: {item.equipment?.stock_number} | Serial #: {item.equipment?.serial_number || 'N/A'}
+      </p>
+      <p className="text-sm text-gray-500">
+        Customer: {item.equipment?.customer_name || 'N/A'} ({item.equipment?.customer_number || 'N/A'})
+      </p>
+    </div>
+  </>
+);
+
 
 export const ListDetailPage: React.FC = () => {
   const { id: listId } = useParams<{ id: string }>();
@@ -17,9 +48,7 @@ export const ListDetailPage: React.FC = () => {
   const currentList = useMemo(() => lists.find((list) => list.id === listId), [lists, listId]);
 
   useEffect(() => {
-    if (listId) {
-      fetchItems(listId);
-    }
+    if (listId) fetchItems(listId);
   }, [listId, fetchItems]);
 
   const handleDeleteItem = (itemId: number) => {
@@ -30,12 +59,13 @@ export const ListDetailPage: React.FC = () => {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center">
         <p>Loading list...</p>
+        <button onClick={() => navigate('/lists')} className="mt-4 text-orange-600">Go Back to Lists</button>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col pb-16">
+    <div className="min-h-screen bg-gray-50 flex flex-col pb-32">
       <Header title={currentList.name} showBackButton />
 
       <main className="flex-1 p-4 space-y-4">
@@ -48,11 +78,13 @@ export const ListDetailPage: React.FC = () => {
             <ul className="divide-y divide-gray-200">
               {items.map((item) => (
                 <li key={item.id} className="p-4 flex items-center">
-                  <div className="flex-grow">
-                    <p className="font-semibold text-gray-900">{item.part_number}</p>
-                    <p className="text-sm text-gray-500">Bin: {item.bin_location}</p>
-                    <p className="text-sm text-gray-500">Qty: {item.quantity}</p>
-                  </div>
+                  {/* Conditionally render the correct component based on item type */}
+                  {item.item_type === 'equipment' && item.equipment ? (
+                    <EquipmentItem item={item} />
+                  ) : (
+                    <PartItem item={item} />
+                  )}
+
                   <button
                     onClick={() => handleDeleteItem(item.id)}
                     className="p-2 text-red-500 hover:bg-red-50 rounded-full"
