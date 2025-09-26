@@ -4,24 +4,20 @@ import { Header } from '../components/Header';
 import { BottomNav } from '../components/BottomNav';
 import { usePartsStore } from '../store/partsStore';
 import { useStore } from '../contexts/StoreContext';
-import { useDebounce } from '../hooks/useDebounce'; // Import the new hook
+import { useDebounce } from '../hooks/useDebounce';
 import { Search } from 'lucide-react';
 
 export const InventoryPage: React.FC = () => {
-  // The store now gives us a search function instead of fetchParts
   const { parts, isLoading, error, searchParts } = usePartsStore();
   const { selectedStore } = useStore();
   const [searchTerm, setSearchTerm] = useState('');
-
-  // Use the debounce hook
-  const debouncedSearchTerm = useDebounce(searchTerm, 300); // 300ms delay
+  const debouncedSearchTerm = useDebounce(searchTerm, 300);
 
   useEffect(() => {
-    // This effect runs whenever the user stops typing
     if (debouncedSearchTerm && selectedStore) {
       searchParts(selectedStore, debouncedSearchTerm);
     }
-  }, [debouncedSearchTerm, selectedStore, searchParts]); // Re-run when debounced term changes
+  }, [debouncedSearchTerm, selectedStore, searchParts]);
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col pb-16">
@@ -54,7 +50,8 @@ export const InventoryPage: React.FC = () => {
                   <li key={part.id} className="p-4 flex justify-between items-center">
                     <div>
                       <p className="font-semibold text-gray-900">{part.part_number}</p>
-                      <p className="text-sm text-gray-500">{part.description || 'No description'}</p>
+                      {/* FIXED: Changed part.description to part.Part_Description */}
+                      <p className="text-sm text-gray-500">{part.Part_Description || 'No description'}</p>
                     </div>
                     <div className="text-right">
                       <p className="font-mono bg-gray-100 text-gray-700 px-2 py-1 rounded-md">{part.bin_location}</p>
