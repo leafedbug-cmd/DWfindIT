@@ -2,22 +2,57 @@
 import React, { useEffect, useState } from 'react';
 import { Header } from '../components/Header';
 import { BottomNav } from '../components/BottomNav';
-import { usePartsStore } from '../store/partsStore';
+import { useInventoryStore, Part, Equipment } from '../store/inventoryStore'; // UPDATED
 import { useStore } from '../contexts/StoreContext';
 import { useDebounce } from '../hooks/useDebounce';
-import { Search } from 'lucide-react';
+import { Search, Hash, Package } from 'lucide-react';
+
+// A dedicated component to render a Part
+const PartCard: React.FC<{ part: Part }> = ({ part }) => (
+  <>
+    <div className="flex-shrink-0 mr-4">
+        <Hash className="h-6 w-6 text-gray-400" />
+    </div>
+    <div>
+      <p className="font-semibold text-gray-900">{part.part_number}</p>
+      <p className="text-sm text-gray-500">{part.Part_Description || 'No description'}</p>
+    </div>
+    <div className="text-right ml-auto">
+      <p className="font-mono bg-gray-100 text-gray-700 px-2 py-1 rounded-md">{part.bin_location}</p>
+    </div>
+  </>
+);
+
+// A dedicated component to render Equipment
+const EquipmentCard: React.FC<{ equipment: Equipment }> = ({ equipment }) => (
+  <>
+    <div className="flex-shrink-0 mr-4">
+      <Package className="h-6 w-6 text-blue-500" />
+    </div>
+    <div>
+      <p className="font-semibold text-gray-900">{equipment.make} {equipment.model}</p>
+      <p className="text-sm text-gray-500">{equipment.description || 'No description'}</p>
+    </div>
+    <div className="text-right ml-auto">
+      <p className="font-mono bg-gray-100 text-gray-700 px-2 py-1 rounded-md">{equipment.stock_number}</p>
+      <p className="text-xs text-gray-500 mt-1">S/N: {equipment.serial_number || 'N/A'}</p>
+    </div>
+  </>
+);
+
 
 export const InventoryPage: React.FC = () => {
-  const { parts, isLoading, error, searchParts } = usePartsStore();
+  // UPDATED: to use the new inventory store
+  const { inventory, isLoading, error, searchInventory } = useInventoryStore();
   const { selectedStore } = useStore();
   const [searchTerm, setSearchTerm] = useState('');
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
 
   useEffect(() => {
     if (debouncedSearchTerm && selectedStore) {
-      searchParts(selectedStore, debouncedSearchTerm);
+      searchInventory(selectedStore, debouncedSearchTerm);
     }
-  }, [debouncedSearchTerm, selectedStore, searchParts]);
+  }, [debouncedSearchTerm, selectedStore, searchInventory]);
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col pb-16">
@@ -28,7 +63,7 @@ export const InventoryPage: React.FC = () => {
         <div className="relative">
           <input
             type="text"
-            placeholder="Search by part # or bin..."
+            placeholder="Search by part #, bin, stock #, or serial #..." // UPDATED placeholder
             className="w-full pl-10 pr-4 py-2 border rounded-lg shadow-sm focus:ring-orange-500 focus:border-orange-500"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -45,22 +80,19 @@ export const InventoryPage: React.FC = () => {
 
           {!isLoading && !error && (
             <ul className="divide-y divide-gray-200">
-              {parts.length > 0 ? (
-                parts.map(part => (
-                  <li key={part.id} className="p-4 flex justify-between items-center">
-                    <div>
-                      <p className="font-semibold text-gray-900">{part.part_number}</p>
-                      {/* FIXED: Changed part.description to part.Part_Description */}
-                      <p className="text-sm text-gray-500">{part.Part_Description || 'No description'}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-mono bg-gray-100 text-gray-700 px-2 py-1 rounded-md">{part.bin_location}</p>
-                    </div>
+              {inventory.length > 0 ? (
+                // UPDATED: Render logic to handle both types
+                inventory.map(item => (
+                  <li key={`${item.type}-${item.id}`} className="p-4 flex items-center">
+                    {item.type === 'part' 
+                      ? <PartCard part={item as Part} /> 
+                      : <EquipmentCard equipment={item as Equipment} />
+                    }
                   </li>
                 ))
               ) : (
                 <p className="p-4 text-center text-gray-500">
-                  {searchTerm ? 'No parts found.' : 'Enter a search term to begin.'}
+                  {searchTerm ? 'No results found.' : 'Enter a search term to begin.'}
                 </p>
               )}
             </ul>
