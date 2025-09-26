@@ -20,7 +20,6 @@ export const ScanPage: React.FC = () => {
   const [scanError, setScanError] = useState<string | null>(null);
   const [scanSuccess, setScanSuccess] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  // ADDED: State to hold the data for the new overlay
   const [scanResult, setScanResult] = useState<ScanResultData | null>(null);
 
   const listId = useMemo(() => {
@@ -28,7 +27,6 @@ export const ScanPage: React.FC = () => {
     return searchParams.get('list');
   }, [location.search]);
 
-  // CHANGED: The page title is now dynamic
   const pageTitle = listId ? "Add Item to List" : "Scan & View";
 
   const handleScan = useCallback(async (barcode: string) => {
@@ -65,7 +63,6 @@ export const ScanPage: React.FC = () => {
         throw new Error(`No part or equipment found for barcode "${barcode}".`);
       }
 
-      // CHANGED: Logic now depends on whether we are in "Add Mode" or "Lookup Mode"
       if (listId) {
         // --- ADD TO LIST MODE ---
         const newItemPayload = foundItem.type === 'part'
@@ -78,8 +75,7 @@ export const ScanPage: React.FC = () => {
       } else {
         // --- LOOKUP MODE ---
         setScanResult(foundItem);
-        // Auto-clear the overlay after 5 seconds
-        setTimeout(() => setScanResult(null), 5000);
+        // REMOVED: Auto-clear timer for the overlay. It will now stay until the next scan.
       }
 
     } catch (error: any) {
@@ -93,19 +89,15 @@ export const ScanPage: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col pb-16 bg-gray-50">
-      {/* CHANGED: Dynamic page title */}
       <Header title={pageTitle} showBackButton />
       
-      <main className="flex-1 p-4 space-y-4 relative"> {/* ADDED: relative positioning */}
+      <main className="flex-1 p-4 space-y-4 relative">
         <BarcodeScanner onScanSuccess={handleScan} onScanError={setScanError} />
         
         {isProcessing && <p className="text-center text-gray-500">Processing...</p>}
         {scanError && <div className="p-2 bg-red-100 text-red-800 rounded">{scanError}</div>}
         {scanSuccess && <div className="p-2 bg-green-100 text-green-800 rounded">{scanSuccess}</div>}
 
-        {/* REMOVED: The "Done Scanning" button */}
-
-        {/* ADDED: The new scan result overlay */}
         {scanResult && (
           <div className="absolute bottom-4 left-4 right-4 bg-black/70 backdrop-blur-sm text-orange-500 p-4 rounded-lg shadow-lg animate-fade-in-up">
             {scanResult.type === 'part' && (
