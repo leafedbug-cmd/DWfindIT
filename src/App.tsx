@@ -6,10 +6,10 @@ import { StoreProvider } from './contexts/StoreContext';
 import { LoginPage } from './pages/LoginPage';
 import { HomePage } from './pages/HomePage';
 import { ProfilePage } from './pages/ProfilePage';
-// ADDED: Import the new pages
 import { ListsPage } from './pages/ListsPage';
 import { ListDetailPage } from './pages/ListDetailPage';
 import { ScanPage } from './pages/ScanPage';
+import { InventoryPage } from './pages/InventoryPage'; // ADDED: Import for InventoryPage
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, isLoading } = useAuthStore();
@@ -60,7 +60,6 @@ function App() {
             }
           />
 
-          {/* ADDED: Routes for the new list functionality */}
           <Route
             path="/lists"
             element={
@@ -84,6 +83,16 @@ function App() {
             element={
               <ProtectedRoute>
                 <ScanPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* ADDED: Route for the Inventory page */}
+          <Route
+            path="/inventory"
+            element={
+              <ProtectedRoute>
+                <InventoryPage />
               </ProtectedRoute>
             }
           />
