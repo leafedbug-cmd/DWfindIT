@@ -4,13 +4,10 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Header } from '../components/Header';
 import { BottomNav } from '../components/BottomNav';
 import { BarcodeScanner } from '../components/BarcodeScanner';
-import { useListItemStore, Part, Equipment } from '../store/listItemStore';
+import { useListItemStore } from '../store/listItemStore';
 import { supabase } from '../services/supabaseClient';
 import { useStore } from '../contexts/StoreContext';
-import { Plus, Minus } from 'lucide-react';
-
-// A type to hold either a found Part or Equipment object
-type FoundItem = (Part & { item_type: 'part' }) | (Equipment & { item_type: 'equipment' });
+import { Keyboard, Camera, Plus, X } from 'lucide-react'; // NEW: Added icons for new UI
 
 export const ScanPage: React.FC = () => {
   const navigate = useNavigate();
@@ -18,67 +15,21 @@ export const ScanPage: React.FC = () => {
   const { selectedStore } = useStore();
   const { addItem } = useListItemStore();
 
-  // --- NEW State Variables ---
-  const [manualBarcode, setManualBarcode] = useState('');
-  const [foundItem, setFoundItem] = useState<FoundItem | null>(null);
-  const [quantity, setQuantity] = useState(1);
-  // --- End NEW State ---
-
   const [scanError, setScanError] = useState<string | null>(null);
   const [scanSuccess, setScanSuccess] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isManualEntryOpen, setIsManualEntryOpen] = useState(false); // NEW: State for manual entry modal
+  const [manualBarcode, setManualBarcode] = useState('');
 
   const listId = useMemo(() => {
     const searchParams = new URLSearchParams(location.search);
     return searchParams.get('list');
   }, [location.search]);
 
-  // --- REFACTORED Logic: A single lookup function for both scan and manual entry ---
-  const handleLookup = useCallback(async (barcode: string) => {
-    if (!barcode) return;
-
-    setIsProcessing(true);
-    setScanError(null);
-    setScanSuccess(null);
-    setFoundItem(null);
-    setQuantity(1);
-
-    try {
-      const [partResult, equipmentResult] = await Promise.all([
-        supabase
-          .from('parts')
-          .select('*')
-          .eq('part_number', barcode)
-          .eq('store_location', selectedStore)
-          .maybeSingle(),
-        supabase
-          .from('equipment')
-          .select('*')
-          .or(`stock_number.eq.${barcode},serial_number.eq.${barcode}`)
-          .maybeSingle(),
-      ]);
-
-      if (partResult.data) {
-        setFoundItem({ ...partResult.data, item_type: 'part' });
-        setScanSuccess(`Found Part: ${partResult.data.part_number}`);
-      } else if (equipmentResult.data) {
-        setFoundItem({ ...equipmentResult.data, item_type: 'equipment' });
-        setScanSuccess(`Found Equipment: ${equipmentResult.data.stock_number}`);
-      } else {
-        throw new Error(`No part or equipment found for "${barcode}" in store ${selectedStore}.`);
-      }
-    } catch (error: any) {
-      setScanError(error.message);
-    } finally {
-      setIsProcessing(false);
-      setTimeout(() => setScanError(null), 3500);
-    }
-  }, [selectedStore]);
-
-  // --- NEW Logic: Function to add the found item to the list ---
-  const handleAddItemToList = async () => {
-    if (!foundItem || !listId) {
-      setScanError("Cannot add item: No item found or no list is active.");
+  const handleScan = useCallback(async (barcode: string) => {
+    if (isProcessing) return;
+    if (!listId) {
+      setScanError("No active list. Please go back and select a list first.");
       return;
     }
 
@@ -87,134 +38,134 @@ export const ScanPage: React.FC = () => {
     setScanSuccess(null);
 
     try {
-      let newItemPayload: any;
+      const [partResult, equipmentResult] = await Promise.all([
+        supabase
+          .from('parts')
+          .select('id, part_number')
+          .eq('part_number', barcode)
+          .eq('store_location', selectedStore)
+          .maybeSingle(),
+        supabase
+          .from('equipment')
+          .select('stock_number, serial_number')
+          .or(`stock_number.eq.${barcode},serial_number.eq.${barcode}`)
+          .maybeSingle(),
+      ]);
+      
+      let newItemPayload: any = null;
 
-      if (foundItem.item_type === 'part') {
+      if (partResult.data) {
         newItemPayload = {
           list_id: listId,
           item_type: 'part',
-          part_id: foundItem.id,
-          quantity: quantity,
+          part_id: partResult.data.id,
+          quantity: 1,
         };
-      } else { // item_type is 'equipment'
+        setScanSuccess(`Found Part: ${partResult.data.part_number}`);
+      } else if (equipmentResult.data) {
         newItemPayload = {
           list_id: listId,
           item_type: 'equipment',
-          equipment_stock_number: foundItem.stock_number,
-          quantity: quantity,
+          equipment_stock_number: equipmentResult.data.stock_number,
+          quantity: 1,
         };
+        setScanSuccess(`Found Equipment: ${equipmentResult.data.stock_number}`);
+      } else {
+        throw new Error(`No part or equipment found for barcode "${barcode}" in store ${selectedStore}.`);
       }
-      
+
       const newItem = await addItem(newItemPayload);
       if (!newItem) {
-        throw new Error('Failed to save the item to the list.');
+        throw new Error('Failed to save the scanned item to the list.');
       }
       
-      setScanSuccess(`Successfully added ${quantity} x ${foundItem.item_type} to list!`);
-      // Clear the found item to be ready for the next scan/lookup
-      setFoundItem(null);
-      setManualBarcode('');
+      setScanSuccess(`Successfully added item to list!`);
+      if (isManualEntryOpen) {
+        setIsManualEntryOpen(false); // Close modal on success
+        setManualBarcode('');
+      }
 
     } catch (error: any) {
       setScanError(error.message);
     } finally {
       setIsProcessing(false);
+      setTimeout(() => setScanError(null), 3500);
       setTimeout(() => setScanSuccess(null), 3500);
     }
-  };
-
+  }, [isProcessing, listId, selectedStore, addItem, isManualEntryOpen]);
+  
   const goBackToList = () => {
     if (listId) navigate(`/list/${listId}`);
     else navigate('/lists');
   }
 
   return (
-    <div className="min-h-screen flex flex-col pb-16 bg-gray-50">
-      <Header title="Add Item to List" showBackButton />
-      <main className="flex-1 p-4 space-y-4">
-        
-        {/* --- NEW: Manual Entry Section --- */}
-        <div className="p-4 bg-white rounded-lg shadow-sm border space-y-2">
-          <label htmlFor="manual-barcode" className="block text-sm font-medium text-gray-700">
-            Manual Entry
-          </label>
-          <div className="flex space-x-2">
-            <input
-              id="manual-barcode"
-              type="text"
-              placeholder="Enter Part # or Stock #"
-              value={manualBarcode}
-              onChange={(e) => setManualBarcode(e.target.value)}
-              className="flex-grow p-2 border border-gray-300 rounded-md"
-            />
-            <button
-              onClick={() => handleLookup(manualBarcode)}
-              disabled={isProcessing || !manualBarcode}
-              className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 disabled:bg-gray-400"
-            >
-              Find
-            </button>
-          </div>
+    <div className="min-h-screen flex flex-col pb-16 bg-black">
+      {/* NEW: Custom Header for this page */}
+      <div className="flex items-center justify-between p-2 bg-gray-800 text-white">
+        <Header title="Add Item to List" showBackButton />
+        <button onClick={() => setIsManualEntryOpen(true)} className="p-2">
+          <Keyboard className="h-6 w-6" />
+        </button>
+      </div>
+      
+      <main className="flex-1 relative">
+        {/* The BarcodeScanner now sits inside a relative container */}
+        <BarcodeScanner onScanSuccess={handleScan} onScanError={setScanError} />
+
+        {/* --- OVERLAYS --- */}
+        {/* OVERLAY: Camera Switch Button (Top Right) */}
+        <button className="absolute top-4 right-4 p-2 bg-gray-900/50 text-white rounded-full">
+          <Camera className="h-6 w-6" />
+        </button>
+
+        {/* OVERLAY: Status Indicator (Bottom Right) */}
+        <div className="absolute bottom-5 right-5">
+            <div className="h-3 w-3 bg-green-500 rounded-full animate-pulse"></div>
         </div>
 
-        <BarcodeScanner onScanSuccess={handleLookup} onScanError={setScanError} />
-
-        {scanError && <div className="p-2 bg-red-100 text-red-800 rounded">{scanError}</div>}
-        {scanSuccess && <div className="p-2 bg-green-100 text-green-800 rounded">{scanSuccess}</div>}
-
-        {/* --- NEW: Found Item Details & Actions Section --- */}
-        {foundItem && (
-          <div className="p-4 bg-white rounded-lg shadow-lg border-2 border-orange-500 space-y-4 animate-fade-in">
-            <div>
-              <p className="text-sm text-gray-500">{foundItem.item_type === 'part' ? 'Part Found' : 'Equipment Found'}</p>
-              <p className="text-lg font-bold text-gray-900">
-                {foundItem.item_type === 'part' ? foundItem.part_number : foundItem.stock_number}
-              </p>
-              <p className="text-sm text-gray-600">
-                {foundItem.item_type === 'part' ? foundItem.bin_location : foundItem.serial_number}
-              </p>
-            </div>
-
-            {/* Quantity Selector */}
-            <div className="flex items-center justify-center space-x-3">
-              <button
-                onClick={() => setQuantity(q => Math.max(1, q - 1))}
-                className="w-10 h-10 flex items-center justify-center text-xl font-bold text-gray-600 bg-gray-200 rounded-full hover:bg-gray-300"
-              >
-                <Minus size={20} />
-              </button>
-              <input
-                type="number"
-                value={quantity}
-                onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value, 10) || 1))}
-                className="w-20 text-center text-xl font-bold p-2 border border-gray-300 rounded-md"
-              />
-              <button
-                onClick={() => setQuantity(q => q + 1)}
-                className="w-10 h-10 flex items-center justify-center text-xl font-bold text-gray-600 bg-gray-200 rounded-full hover:bg-gray-300"
-              >
-                <Plus size={20} />
-              </button>
-            </div>
-
-            {/* Add to List Button */}
+        {/* OVERLAY: Done Scanning Button (Bottom Center) */}
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2">
             <button
-              onClick={handleAddItemToList}
-              disabled={isProcessing}
-              className="w-full bg-orange-600 text-white px-4 py-3 rounded-lg shadow-sm flex items-center justify-center font-medium hover:bg-orange-700 disabled:bg-gray-400"
+              onClick={goBackToList}
+              className="flex items-center justify-center px-6 py-3 bg-gray-900/80 backdrop-blur-sm text-white rounded-full font-medium shadow-lg"
             >
-              Add {quantity} to List
+                <Plus className="h-5 w-5 mr-2" />
+                Done Scanning
             </button>
-          </div>
-        )}
-        
-        <button 
-          onClick={goBackToList}
-          className="w-full mt-4 bg-gray-200 text-gray-800 px-4 py-3 rounded-lg font-medium"
-        >
-          Done Scanning
-        </button>
+        </div>
       </main>
+
+      {/* NEW: Manual Entry Modal */}
+      {isManualEntryOpen && (
+        <div className="absolute inset-0 bg-black/60 flex items-center justify-center p-4 z-20">
+            <div className="bg-white rounded-lg p-4 w-full max-w-sm space-y-3">
+                <div className="flex justify-between items-center">
+                    <h3 className="font-semibold">Manual Entry</h3>
+                    <button onClick={() => setIsManualEntryOpen(false)}><X className="h-5 w-5"/></button>
+                </div>
+                <input
+                    type="text"
+                    value={manualBarcode}
+                    onChange={(e) => setManualBarcode(e.target.value)}
+                    placeholder="Enter Part # or Stock #"
+                    className="w-full p-2 border rounded-md"
+                />
+                <button
+                    onClick={() => handleScan(manualBarcode)}
+                    disabled={!manualBarcode || isProcessing}
+                    className="w-full p-2 bg-orange-600 text-white rounded-md disabled:bg-gray-400"
+                >
+                    {isProcessing ? 'Searching...' : 'Find & Add to List'}
+                </button>
+            </div>
+        </div>
+      )}
+
+      {/* Global success/error messages can be placed here if needed */}
+      {scanError && <div className="fixed bottom-20 left-4 right-4 p-2 bg-red-100 text-red-800 rounded z-30">{scanError}</div>}
+      {scanSuccess && <div className="fixed bottom-20 left-4 right-4 p-2 bg-green-100 text-green-800 rounded z-30">{scanSuccess}</div>}
+
       <BottomNav />
     </div>
   );
