@@ -1,14 +1,15 @@
 // src/pages/WorkOrdersPage.tsx
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Header } from "../components/Header";
 import { BottomNav } from "../components/BottomNav";
-import { Html5Qrcode } from "html5-qrcode";
-import { supabase } from "../services/supabase";
-import { useAuthStore } from "../store/authStore";              // 👈 NEW
+import { supabase } from "../services/supabaseClient";
+import { useAuthStore } from "../store/authStore";
 import { X, Scan, Save } from "lucide-react";
+import { BarcodeScanner } from "../components/BarcodeScanner"; // ADDED: The reusable scanner
 
 type AnyRow = Record<string, any>;
 
+// This helper function is great, no changes needed.
 function pick<T = string>(row: AnyRow | null, keys: string[], fallback: T | "" = ""): T | "" {
   if (!row) return fallback;
   for (const k of keys) {
@@ -18,11 +19,12 @@ function pick<T = string>(row: AnyRow | null, keys: string[], fallback: T | "" =
 }
 
 const WorkOrdersPage: React.FC = () => {
-  const { user } = useAuthStore();                               // 👈 NEW
+  const { user } = useAuthStore();
   const [isScanning, setIsScanning] = useState(false);
   const [row, setRow] = useState<AnyRow | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [ok, setOk] = useState<string | null>(null);             // 👈 NEW success banner
+  const [ok, setOk] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   // manual fields
   const [contactName, setContactName] = useState("");
@@ -30,79 +32,41 @@ const WorkOrdersPage: React.FC = () => {
   const [jobLocation, setJobLocation] = useState("");
   const [instructions, setInstructions] = useState("");
 
-  const [saving, setSaving] = useState(false);                   // 👈 NEW
-
-  // derived display
   const display = {
-    manufacturer: pick(row, ["manufacturer", "make", "brand", "mfr", "vendor_name"], ""),
-    model: pick(row, ["model", "model_number", "model_no", "equipment_model"], ""),
-    serial: pick(row, ["serial_number", "sn", "serialno", "serial_no"], ""),
-    stock: pick(row, ["stock_number", "stock_no", "equipment_number", "unit_no"], ""),
-    hourmeter: pick<number | string>(row, ["last_hourmeter", "hourmeter", "hour_meter", "hours"], "")
+    manufacturer: pick(row, ["manufacturer", "make"]),
+    model: pick(row, ["model"]),
+    serial: pick(row, ["serial_number", "sn"]),
+    stock: pick(row, ["stock_number"]),
+    hourmeter: pick<number | string>(row, ["hour_meter", "hours"], "")
   };
 
-  // scanner
-  const scannerRef = useRef<Html5Qrcode | null>(null);
-  const cleanupScanner = async () => {
-    const s = scannerRef.current;
-    if (!s) return;
-    try { await s.stop(); } catch {}
-    try { await s.clear(); } catch {}
-    scannerRef.current = null;
-  };
-  useEffect(() => () => { void cleanupScanner(); }, []);
+  // REMOVED: All manual scanner logic (startScan, closeScanner, cleanupScanner, etc.)
+  // The BarcodeScanner component now handles all of that automatically.
 
-  const fetchEquipmentByCode = async (codeRaw: string) => {
-    const code = codeRaw.trim();
-    let res = await supabase.from("equipment").select("*").eq("stock_number", code).maybeSingle();
-    if (!res.data) {
-      res = await supabase.from("equipment").select("*").eq("serial_number", code).maybeSingle();
+  // ADDED: A new, simpler handler for when the BarcodeScanner finds a code.
+  const handleScanSuccess = async (barcode: string) => {
+    try {
+      setErr(null);
+      let res = await supabase.from("equipment").select("*").eq("stock_number", barcode).maybeSingle();
+      if (!res.data) {
+        res = await supabase.from("equipment").select("*").eq("serial_number", barcode).maybeSingle();
+      }
+      
+      if (res.error) throw res.error;
+      if (!res.data) throw new Error(`No equipment found for code: ${barcode}`);
+
+      setRow(res.data as AnyRow);
+      setIsScanning(false); // Close the scanner modal on success
+    } catch (e: any) {
+      setErr(e?.message ?? "Lookup failed");
     }
-    return res;
   };
 
-  const startScan = async () => {
-    setErr(null);
-    const elId = "wo-scan";
-    const el = document.getElementById(elId);
-    if (!el) { setErr("Scanner container missing"); return; }
-
-    await cleanupScanner();
-    const s = new Html5Qrcode(elId);
-    scannerRef.current = s;
-
-    const cameras = await Html5Qrcode.getCameras();
-    if (!cameras?.length) { setErr("No cameras found"); return; }
-    const cam = cameras.find(c => /back|rear|environment/i.test(c.label)) ?? cameras[0];
-
-    await s.start(
-      { deviceId: { exact: cam.id } },
-      { fps: 10, qrbox: { width: 250, height: 250 } },
-      async (decodedText) => {
-        try {
-          const { data, error } = await fetchEquipmentByCode(decodedText);
-          if (error) { setErr(error.message); setRow(null); return; }
-          if (!data) { setErr(`No equipment found for code: ${decodedText}`); setRow(null); return; }
-          setRow(data as AnyRow);
-          setErr(null);
-          setIsScanning(false);
-          await cleanupScanner();
-        } catch (e: any) {
-          setErr(e?.message ?? "Lookup failed");
-        }
-      },
-      () => {}
-    );
-  };
-
-  const openScanner = () => { setIsScanning(true); setTimeout(() => { void startScan(); }, 120); };
-  const closeScanner = async () => { await cleanupScanner(); setIsScanning(false); };
-
-  // 👇 NEW: save work order
   const handleSave = async () => {
     setErr(null);
     setOk(null);
     if (!user?.id) { setErr("Not signed in."); return; }
+    if (!row) { setErr("No equipment has been scanned."); return; }
     if (!instructions && !contactName && !contactPhone) {
       setErr("Add at least one detail (instructions, name or phone).");
       return;
@@ -110,26 +74,33 @@ const WorkOrdersPage: React.FC = () => {
 
     try {
       setSaving(true);
+      
+      // FIXED: Use the correct column names we created in the database
+      const workOrderData = {
+        user_id: user.id, // was 'created_by'
+        equipment_stock_number: row.stock_number, // was 'equipment_id'
+        customer_number: row.customer_number || null,
+        store_location: row.store_location || null,
+        description: `Work order for ${display.manufacturer} ${display.model}. Contact: ${contactName}`,
+        status: "Open",
+        // These fields will come from your manual input form
+        // contact_name: contactName || null,
+        // contact_phone: contactPhone || null,
+        // job_location: jobLocation || null,
+        // instructions: instructions || null,
+      };
 
-      // try to include equipment_id if your equipment row has 'id'
-      const equipment_id = row && ("id" in row) ? (row.id as string) : null;
-
-      const { error } = await supabase.from("work_orders").insert({
-        created_by: user.id,
-        equipment_id,
-        contact_name: contactName || null,
-        contact_phone: contactPhone || null,
-        job_location: jobLocation || null,
-        instructions: instructions || null,
-        status: "open"
-      });
+      const { error } = await supabase.from("work_orders").insert(workOrderData);
 
       if (error) throw error;
 
       setOk("Work order saved!");
-      // optional reset
-      // setRow(null);
-      // setContactName(""); setContactPhone(""); setJobLocation(""); setInstructions("");
+      // Reset form after successful save
+      setRow(null);
+      setContactName("");
+      setContactPhone("");
+      setJobLocation("");
+      setInstructions("");
     } catch (e: any) {
       setErr(e?.message ?? "Failed to save work order");
     } finally {
@@ -144,16 +115,15 @@ const WorkOrdersPage: React.FC = () => {
         <div className="flex gap-3">
           <button
             className="px-3 py-2 rounded bg-black text-white flex items-center gap-2"
-            onClick={openScanner}
+            onClick={() => setIsScanning(true)} // Simplified open action
           >
             <Scan size={18}/> Scan Equipment
           </button>
 
-          {/* SAVE BUTTON */}
           <button
             className="px-3 py-2 rounded bg-orange-600 text-white flex items-center gap-2 disabled:opacity-60"
             onClick={handleSave}
-            disabled={saving}
+            disabled={saving || !row} // Disable save if nothing is scanned
             aria-busy={saving}
             title="Save work order"
           >
@@ -162,16 +132,14 @@ const WorkOrdersPage: React.FC = () => {
           </button>
         </div>
 
-        {/* auto-filled equipment fields */}
         <div className="grid md:grid-cols-2 gap-4">
-          <input className="w-full px-3 py-2 rounded border bg-white" placeholder="Manufacturer" value={display.manufacturer} readOnly />
-          <input className="w-full px-3 py-2 rounded border bg-white" placeholder="Model" value={display.model} readOnly />
-          <input className="w-full px-3 py-2 rounded border bg-white" placeholder="Serial #" value={display.serial} readOnly />
-          <input className="w-full px-3 py-2 rounded border bg-white" placeholder="Customer Equipment # (Stock #)" value={display.stock} readOnly />
-          <input className="w-full px-3 py-2 rounded border bg-white" placeholder="Hourmeter" value={display.hourmeter ?? ""} readOnly />
+          <input className="w-full px-3 py-2 rounded border bg-gray-100 cursor-not-allowed" placeholder="Manufacturer" value={display.manufacturer} readOnly />
+          <input className="w-full px-3 py-2 rounded border bg-gray-100 cursor-not-allowed" placeholder="Model" value={display.model} readOnly />
+          <input className="w-full px-3 py-2 rounded border bg-gray-100 cursor-not-allowed" placeholder="Serial #" value={display.serial} readOnly />
+          <input className="w-full px-3 py-2 rounded border bg-gray-100 cursor-not-allowed" placeholder="Stock #" value={display.stock} readOnly />
+          <input className="w-full px-3 py-2 rounded border bg-gray-100 cursor-not-allowed" placeholder="Hourmeter" value={display.hourmeter ?? ""} readOnly />
         </div>
 
-        {/* manual fields */}
         <div className="grid md:grid-cols-2 gap-4">
           <input className="w-full px-3 py-2 rounded border bg-white" placeholder="Contact Name" value={contactName} onChange={e=>setContactName(e.target.value)} />
           <input className="w-full px-3 py-2 rounded border bg-white" placeholder="Contact Phone" value={contactPhone} onChange={e=>setContactPhone(e.target.value)} />
@@ -183,17 +151,21 @@ const WorkOrdersPage: React.FC = () => {
         {err && <div className="p-3 bg-red-100 border border-red-400 text-red-700 rounded">{err}</div>}
       </main>
 
-      {/* scanner modal */}
+      {/* UPDATED: Scanner modal now uses the BarcodeScanner component */}
       {isScanning && (
         <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg w-full max-w-md p-6">
             <div className="flex justify-between items-center mb-3">
               <h3 className="text-lg font-semibold">Scan Equipment</h3>
-              <button onClick={closeScanner} className="text-gray-400 hover:text-gray-600">
+              <button onClick={() => setIsScanning(false)} className="text-gray-400 hover:text-gray-600">
                 <X className="h-6 w-6" />
               </button>
             </div>
-            <div id="wo-scan" className="w-full border-2 border-dashed border-gray-300 rounded-lg bg-gray-50" style={{ minHeight: 220 }} />
+            {/* The new component handles all camera logic automatically */}
+            <BarcodeScanner 
+                onScanSuccess={(text) => handleScanSuccess(text)} 
+                onScanError={(msg) => setErr(msg)}
+            />
             <p className="text-xs text-gray-500 mt-2">
               Point the camera at the equipment barcode (stock or serial).
             </p>
