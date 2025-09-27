@@ -46,16 +46,19 @@ export const useInventoryStore = create<InventoryState>((set) => ({
 
       // Perform searches for parts and equipment in parallel
       const [partsResponse, equipmentResponse] = await Promise.all([
+        // Parts query STILL filters by store location
         supabase
           .from('parts')
-          .select('id, part_number, Part_Description, bin_location') // Specify columns
+          .select('id, part_number, Part_Description, bin_location')
           .eq('store_location', storeId)
           .or(`part_number.ilike.%${searchTerm}%,bin_location.ilike.%${searchTerm}%`)
           .limit(25),
+        
+        // Equipment query NO LONGER filters by store location
         supabase
           .from('equipment')
-          .select('id, stock_number, serial_number, make, model, description') // Specify columns
-          .eq('store_location', storeId)
+          .select('id, stock_number, serial_number, make, model, description')
+          // REMOVED: .eq('store_location', storeId) to allow global search
           .or(`stock_number.ilike.%${searchTerm}%,serial_number.ilike.%${searchTerm}%`)
           .limit(25),
       ]);
