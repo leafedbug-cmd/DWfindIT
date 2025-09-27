@@ -5,11 +5,10 @@ import { BottomNav } from "../components/BottomNav";
 import { supabase } from "../services/supabaseClient";
 import { useAuthStore } from "../store/authStore";
 import { X, Scan, Save } from "lucide-react";
-import { BarcodeScanner } from "../components/BarcodeScanner"; // ADDED: The reusable scanner
+import { BarcodeScanner } from "../components/BarcodeScanner";
 
 type AnyRow = Record<string, any>;
 
-// This helper function is great, no changes needed.
 function pick<T = string>(row: AnyRow | null, keys: string[], fallback: T | "" = ""): T | "" {
   if (!row) return fallback;
   for (const k of keys) {
@@ -18,7 +17,8 @@ function pick<T = string>(row: AnyRow | null, keys: string[], fallback: T | "" =
   return fallback;
 }
 
-const WorkOrdersPage: React.FC = () => {
+// FIXED: Added 'export' to make this a named export, which fixes the build error.
+export const WorkOrdersPage: React.FC = () => {
   const { user } = useAuthStore();
   const [isScanning, setIsScanning] = useState(false);
   const [row, setRow] = useState<AnyRow | null>(null);
@@ -40,10 +40,6 @@ const WorkOrdersPage: React.FC = () => {
     hourmeter: pick<number | string>(row, ["hour_meter", "hours"], "")
   };
 
-  // REMOVED: All manual scanner logic (startScan, closeScanner, cleanupScanner, etc.)
-  // The BarcodeScanner component now handles all of that automatically.
-
-  // ADDED: A new, simpler handler for when the BarcodeScanner finds a code.
   const handleScanSuccess = async (barcode: string) => {
     try {
       setErr(null);
@@ -75,15 +71,15 @@ const WorkOrdersPage: React.FC = () => {
     try {
       setSaving(true);
       
-      // FIXED: Use the correct column names we created in the database
       const workOrderData = {
-        user_id: user.id, // was 'created_by'
-        equipment_stock_number: row.stock_number, // was 'equipment_id'
+        user_id: user.id,
+        equipment_stock_number: row.stock_number,
         customer_number: row.customer_number || null,
         store_location: row.store_location || null,
         description: `Work order for ${display.manufacturer} ${display.model}. Contact: ${contactName}`,
         status: "Open",
         // These fields will come from your manual input form
+        // You would need to add columns to your 'work_orders' table for these
         // contact_name: contactName || null,
         // contact_phone: contactPhone || null,
         // job_location: jobLocation || null,
@@ -115,7 +111,7 @@ const WorkOrdersPage: React.FC = () => {
         <div className="flex gap-3">
           <button
             className="px-3 py-2 rounded bg-black text-white flex items-center gap-2"
-            onClick={() => setIsScanning(true)} // Simplified open action
+            onClick={() => setIsScanning(true)}
           >
             <Scan size={18}/> Scan Equipment
           </button>
@@ -123,7 +119,7 @@ const WorkOrdersPage: React.FC = () => {
           <button
             className="px-3 py-2 rounded bg-orange-600 text-white flex items-center gap-2 disabled:opacity-60"
             onClick={handleSave}
-            disabled={saving || !row} // Disable save if nothing is scanned
+            disabled={saving || !row}
             aria-busy={saving}
             title="Save work order"
           >
@@ -151,7 +147,6 @@ const WorkOrdersPage: React.FC = () => {
         {err && <div className="p-3 bg-red-100 border border-red-400 text-red-700 rounded">{err}</div>}
       </main>
 
-      {/* UPDATED: Scanner modal now uses the BarcodeScanner component */}
       {isScanning && (
         <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg w-full max-w-md p-6">
@@ -161,7 +156,6 @@ const WorkOrdersPage: React.FC = () => {
                 <X className="h-6 w-6" />
               </button>
             </div>
-            {/* The new component handles all camera logic automatically */}
             <BarcodeScanner 
                 onScanSuccess={(text) => handleScanSuccess(text)} 
                 onScanError={(msg) => setErr(msg)}
