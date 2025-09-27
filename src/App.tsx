@@ -9,7 +9,7 @@ import { ProfilePage } from './pages/ProfilePage';
 import { ListsPage } from './pages/ListsPage';
 import { ListDetailPage } from './pages/ListDetailPage';
 import { ScanPage } from './pages/ScanPage';
-import { InventoryPage } from './pages/InventoryPage'; // ADDED: Import for InventoryPage
+import { WorkOrdersPage } from './pages/WorkOrdersPage'; // ADDED
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, isLoading } = useAuthStore();
@@ -86,13 +86,13 @@ function App() {
               </ProtectedRoute>
             }
           />
-
-          {/* ADDED: Route for the Inventory page */}
+          
+          {/* ADDED: Route for the Work Orders page */}
           <Route
-            path="/inventory"
+            path="/work-orders"
             element={
               <ProtectedRoute>
-                <InventoryPage />
+                <WorkOrdersPage />
               </ProtectedRoute>
             }
           />
