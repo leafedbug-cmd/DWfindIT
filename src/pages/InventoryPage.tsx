@@ -2,17 +2,18 @@
 import React, { useEffect, useState } from 'react';
 import { Header } from '../components/Header';
 import { BottomNav } from '../components/BottomNav';
-import { useInventoryStore, Part, Equipment } from '../store/inventoryStore'; // UPDATED
+import { useInventoryStore, Part, Equipment } from '../store/inventoryStore';
 import { useStore } from '../contexts/StoreContext';
 import { useDebounce } from '../hooks/useDebounce';
 import { Search, Hash, Package } from 'lucide-react';
 
 // A dedicated component to render a Part
-const PartCard: React.FC<{ part: Part }> = ({ part }) => (
+const PartCard: React.FC<{ part: Part; onCopy: (text: string) => void }> = ({ part, onCopy }) => (
   <>
-    <div className="flex-shrink-0 mr-4">
-        <Hash className="h-6 w-6 text-gray-400" />
-    </div>
+    {/* UPDATED: The icon is now a button */}
+    <button onClick={() => onCopy(part.part_number)} className="flex-shrink-0 mr-4 p-2 rounded-full hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-orange-500">
+      <Hash className="h-6 w-6 text-gray-400" />
+    </button>
     <div>
       <p className="font-semibold text-gray-900">{part.part_number}</p>
       <p className="text-sm text-gray-500">{part.Part_Description || 'No description'}</p>
@@ -24,11 +25,12 @@ const PartCard: React.FC<{ part: Part }> = ({ part }) => (
 );
 
 // A dedicated component to render Equipment
-const EquipmentCard: React.FC<{ equipment: Equipment }> = ({ equipment }) => (
+const EquipmentCard: React.FC<{ equipment: Equipment; onCopy: (text: string) => void }> = ({ equipment, onCopy }) => (
   <>
-    <div className="flex-shrink-0 mr-4">
+    {/* UPDATED: The icon is now a button */}
+    <button onClick={() => onCopy(equipment.stock_number)} className="flex-shrink-0 mr-4 p-2 rounded-full hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-orange-500">
       <Package className="h-6 w-6 text-blue-500" />
-    </div>
+    </button>
     <div>
       <p className="font-semibold text-gray-900">{equipment.make} {equipment.model}</p>
       <p className="text-sm text-gray-500">{equipment.description || 'No description'}</p>
@@ -40,19 +42,30 @@ const EquipmentCard: React.FC<{ equipment: Equipment }> = ({ equipment }) => (
   </>
 );
 
-
 export const InventoryPage: React.FC = () => {
-  // UPDATED: to use the new inventory store
   const { inventory, isLoading, error, searchInventory } = useInventoryStore();
   const { selectedStore } = useStore();
   const [searchTerm, setSearchTerm] = useState('');
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
+  // ADDED: State for the copy-to-clipboard confirmation message
+  const [copySuccessMessage, setCopySuccessMessage] = useState('');
 
   useEffect(() => {
     if (debouncedSearchTerm && selectedStore) {
       searchInventory(selectedStore, debouncedSearchTerm);
     }
   }, [debouncedSearchTerm, selectedStore, searchInventory]);
+
+  // ADDED: Function to handle copying text to the clipboard
+  const handleCopyToClipboard = (text: string) => {
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(() => {
+      setCopySuccessMessage(`'${text}' copied to clipboard!`);
+      setTimeout(() => setCopySuccessMessage(''), 2000); // Message disappears after 2 seconds
+    }).catch(err => {
+      console.error('Failed to copy text: ', err);
+    });
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col pb-16">
@@ -63,7 +76,7 @@ export const InventoryPage: React.FC = () => {
         <div className="relative">
           <input
             type="text"
-            placeholder="Search by part #, bin, stock #, or serial #..." // UPDATED placeholder
+            placeholder="Search by part #, bin, stock #, or serial #..."
             className="w-full pl-10 pr-4 py-2 border rounded-lg shadow-sm focus:ring-orange-500 focus:border-orange-500"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -81,12 +94,11 @@ export const InventoryPage: React.FC = () => {
           {!isLoading && !error && (
             <ul className="divide-y divide-gray-200">
               {inventory.length > 0 ? (
-                // UPDATED: Render logic to handle both types
                 inventory.map(item => (
                   <li key={`${item.type}-${item.id}`} className="p-4 flex items-center">
                     {item.type === 'part' 
-                      ? <PartCard part={item as Part} /> 
-                      : <EquipmentCard equipment={item as Equipment} />
+                      ? <PartCard part={item as Part} onCopy={handleCopyToClipboard} /> 
+                      : <EquipmentCard equipment={item as Equipment} onCopy={handleCopyToClipboard} />
                     }
                   </li>
                 ))
@@ -99,6 +111,13 @@ export const InventoryPage: React.FC = () => {
           )}
         </div>
       </main>
+
+      {/* ADDED: Toast notification for copy success */}
+      {copySuccessMessage && (
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 bg-gray-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm">
+          {copySuccessMessage}
+        </div>
+      )}
 
       <BottomNav />
     </div>
