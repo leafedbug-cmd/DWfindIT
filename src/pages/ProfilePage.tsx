@@ -2,14 +2,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Header } from '../components/Header';
 import { BottomNav } from '../components/BottomNav';
-import { supabase } from '../services/supabaseClient'; // FIXED: Corrected the import path
+import { supabase } from '../services/supabaseClient';
 import { useStore } from '../contexts/StoreContext';
 import { useAuthStore } from '../store/authStore';
 import { ChevronRight } from 'lucide-react';
 
 type ProfileRow = {
   id: string;
-  employee_name?: string | null; // matches your table
+  employee_name?: string | null;
   role?: string | null;
   store_location?: string | null;
 };
@@ -21,9 +21,10 @@ type ListRow = {
   updated_at: string | null;
 };
 
+// CHANGED: created_by to user_id
 type WorkOrder = {
   id: string;
-  created_by: string;
+  user_id: string; // Corrected property
   status: string | null;
   created_at: string | null;
 };
@@ -44,7 +45,6 @@ const ManagerSection: React.FC = () => {
         setLoading(true);
         setErr(null);
 
-        // 1) fetch employee profiles for this store
         const { data: profData, error: profErr } = await supabase
           .from('profiles')
           .select('id, employee_name, role, store_location')
@@ -59,12 +59,12 @@ const ManagerSection: React.FC = () => {
         }
         if (!alive) return;
         setProfilesById(byId);
-
-        // 2) lists owned by those users
+        
         if (userIds.length === 0) {
           setLists([]);
           setWoByUser({});
         } else {
+          // CHANGED: selected and filtered by 'user_id' instead of 'created_by'
           const [{ data: listData, error: listErr }, { data: woData, error: woErr }] =
             await Promise.all([
               supabase
@@ -73,8 +73,8 @@ const ManagerSection: React.FC = () => {
                 .in('user_id', userIds),
               supabase
                 .from('work_orders')
-                .select('id, created_by, status, created_at')
-                .in('created_by', userIds),
+                .select('id, user_id, status, created_at') // Corrected column
+                .in('user_id', userIds), // Corrected column
             ]);
 
           if (listErr) throw listErr;
@@ -82,10 +82,13 @@ const ManagerSection: React.FC = () => {
           if (!alive) return;
 
           setLists(listData || []);
-
+          
+          // CHANGED: Group by user_id
           const grouped: Record<string, WorkOrder[]> = {};
           for (const w of (woData || [])) {
-            (grouped[w.created_by] ||= []).push(w);
+            if (w.user_id) { // Ensure user_id is not null
+                (grouped[w.user_id] ||= []).push(w);
+            }
           }
           setWoByUser(grouped);
         }
@@ -120,12 +123,6 @@ const ManagerSection: React.FC = () => {
 
       {!loading && !err && (
         <>
-          {[...listsByUser.keys()].length === 0 && Object.keys(profilesById).length > 0 && (
-            <div className="p-4 text-gray-600 bg-white border border-gray-200 rounded-lg">
-              No employee lists found for this store.
-            </div>
-          )}
-
           {Object.keys(profilesById).length === 0 && (
             <div className="p-4 text-gray-600 bg-white border border-gray-200 rounded-lg">
               No employees found for this store.
@@ -140,7 +137,6 @@ const ManagerSection: React.FC = () => {
 
             return (
               <div key={userId} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-                {/* Header */}
                 <button
                   onClick={() => setExpanded(open ? null : userId)}
                   className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50"
@@ -148,11 +144,6 @@ const ManagerSection: React.FC = () => {
                   <div>
                     <div className="font-semibold text-gray-900 flex items-center gap-2">
                       {title}
-                      {owner.role && (
-                        <span className="text-[10px] px-2 py-[2px] rounded-full bg-gray-100 border border-gray-200 text-gray-700">
-                          {owner.role}
-                        </span>
-                      )}
                     </div>
                     <div className="text-xs text-gray-500">
                       {userLists.length} list{userLists.length !== 1 ? 's' : ''} • {userWOs.length} work order{userWOs.length !== 1 ? 's' : ''}
@@ -161,10 +152,8 @@ const ManagerSection: React.FC = () => {
                   <ChevronRight className={`h-4 w-4 transition-transform ${open ? 'rotate-90' : ''}`} />
                 </button>
 
-                {/* Body */}
                 {open && (
                   <div className="border-t border-gray-200">
-                    {/* Lists */}
                     <div className="px-4 py-2 bg-gray-50 text-xs text-gray-600 border-b border-gray-200">
                       Lists ({userLists.length})
                     </div>
@@ -188,7 +177,6 @@ const ManagerSection: React.FC = () => {
                       </div>
                     )}
 
-                    {/* Work Orders */}
                     <div className="px-4 py-2 bg-gray-50 text-xs text-gray-600 border-t border-b border-gray-200">
                       Work Orders ({userWOs.length})
                     </div>
@@ -197,7 +185,7 @@ const ManagerSection: React.FC = () => {
                     ) : (
                       <div className="divide-y">
                         {userWOs
-                          .slice() // don’t mutate original
+                          .slice()
                           .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
                           .map(wo => (
                             <a
@@ -262,7 +250,6 @@ export const ProfilePage: React.FC = () => {
     <div className="min-h-screen bg-gray-50 flex flex-col pb-16">
       <Header title="Profile" />
       <main className="flex-1 p-4 space-y-6">
-        {/* Account card */}
         <div className="bg-white border border-gray-200 rounded-lg p-4">
           <div className="font-semibold text-gray-900 mb-1">Account</div>
           <div className="text-sm text-gray-600">User: {user?.email}</div>
@@ -271,7 +258,6 @@ export const ProfilePage: React.FC = () => {
           </div>
         </div>
 
-        {/* Manager tools (only for managers) */}
         {isManager && (
           <div className="space-y-3">
             <div className="text-xs uppercase tracking-wide text-gray-500">Manager</div>
@@ -283,5 +269,3 @@ export const ProfilePage: React.FC = () => {
     </div>
   );
 };
-
-export default ProfilePage;
