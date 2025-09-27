@@ -8,46 +8,53 @@ import { useDebounce } from '../hooks/useDebounce';
 import { Search, Hash, Package } from 'lucide-react';
 
 // A dedicated component to render a Part
-const PartCard: React.FC<{ part: Part; onCopy: (text: string) => void }> = ({ part, onCopy }) => (
-  <>
-    {/* UPDATED: The icon is now a button */}
-    <button onClick={() => onCopy(part.part_number)} className="flex-shrink-0 mr-4 p-2 rounded-full hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-orange-500">
-      <Hash className="h-6 w-6 text-gray-400" />
-    </button>
-    <div>
-      <p className="font-semibold text-gray-900">{part.part_number}</p>
-      <p className="text-sm text-gray-500">{part.Part_Description || 'No description'}</p>
-    </div>
-    <div className="text-right ml-auto">
-      <p className="font-mono bg-gray-100 text-gray-700 px-2 py-1 rounded-md">{part.bin_location}</p>
-    </div>
-  </>
-);
+const PartCard: React.FC<{ part: Part; onCopy: (text: string) => void }> = ({ part, onCopy }) => {
+  // CHANGED: Create a formatted string with all the part's details.
+  const partDetailsToCopy = `Part Info:\nPart #: ${part.part_number}\nDescription: ${part.Part_Description || 'N/A'}\nBin Location: ${part.bin_location}`;
+
+  return (
+    <>
+      <button onClick={() => onCopy(partDetailsToCopy)} className="flex-shrink-0 mr-4 p-2 rounded-full hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-orange-500">
+        <Hash className="h-6 w-6 text-gray-400" />
+      </button>
+      <div>
+        <p className="font-semibold text-gray-900">{part.part_number}</p>
+        <p className="text-sm text-gray-500">{part.Part_Description || 'No description'}</p>
+      </div>
+      <div className="text-right ml-auto">
+        <p className="font-mono bg-gray-100 text-gray-700 px-2 py-1 rounded-md">{part.bin_location}</p>
+      </div>
+    </>
+  );
+};
 
 // A dedicated component to render Equipment
-const EquipmentCard: React.FC<{ equipment: Equipment; onCopy: (text: string) => void }> = ({ equipment, onCopy }) => (
-  <>
-    {/* UPDATED: The icon is now a button */}
-    <button onClick={() => onCopy(equipment.stock_number)} className="flex-shrink-0 mr-4 p-2 rounded-full hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-orange-500">
-      <Package className="h-6 w-6 text-blue-500" />
-    </button>
-    <div>
-      <p className="font-semibold text-gray-900">{equipment.make} {equipment.model}</p>
-      <p className="text-sm text-gray-500">{equipment.description || 'No description'}</p>
-    </div>
-    <div className="text-right ml-auto">
-      <p className="font-mono bg-gray-100 text-gray-700 px-2 py-1 rounded-md">{equipment.stock_number}</p>
-      <p className="text-xs text-gray-500 mt-1">S/N: {equipment.serial_number || 'N/A'}</p>
-    </div>
-  </>
-);
+const EquipmentCard: React.FC<{ equipment: Equipment; onCopy: (text: string) => void }> = ({ equipment, onCopy }) => {
+  // CHANGED: Create a formatted string with all the equipment's details.
+  const equipmentDetailsToCopy = `Equipment Info:\nMake: ${equipment.make || 'N/A'}\nModel: ${equipment.model || 'N/A'}\nDescription: ${equipment.description || 'N/A'}\nStock #: ${equipment.stock_number}\nSerial #: ${equipment.serial_number || 'N/A'}`;
+
+  return (
+    <>
+      <button onClick={() => onCopy(equipmentDetailsToCopy)} className="flex-shrink-0 mr-4 p-2 rounded-full hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-orange-500">
+        <Package className="h-6 w-6 text-blue-500" />
+      </button>
+      <div>
+        <p className="font-semibold text-gray-900">{equipment.make} {equipment.model}</p>
+        <p className="text-sm text-gray-500">{equipment.description || 'No description'}</p>
+      </div>
+      <div className="text-right ml-auto">
+        <p className="font-mono bg-gray-100 text-gray-700 px-2 py-1 rounded-md">{equipment.stock_number}</p>
+        <p className="text-xs text-gray-500 mt-1">S/N: {equipment.serial_number || 'N/A'}</p>
+      </div>
+    </>
+  );
+};
 
 export const InventoryPage: React.FC = () => {
   const { inventory, isLoading, error, searchInventory } = useInventoryStore();
   const { selectedStore } = useStore();
   const [searchTerm, setSearchTerm] = useState('');
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
-  // ADDED: State for the copy-to-clipboard confirmation message
   const [copySuccessMessage, setCopySuccessMessage] = useState('');
 
   useEffect(() => {
@@ -56,12 +63,12 @@ export const InventoryPage: React.FC = () => {
     }
   }, [debouncedSearchTerm, selectedStore, searchInventory]);
 
-  // ADDED: Function to handle copying text to the clipboard
   const handleCopyToClipboard = (text: string) => {
     if (!text) return;
     navigator.clipboard.writeText(text).then(() => {
-      setCopySuccessMessage(`'${text}' copied to clipboard!`);
-      setTimeout(() => setCopySuccessMessage(''), 2000); // Message disappears after 2 seconds
+      // CHANGED: Cleaner confirmation message
+      setCopySuccessMessage('Copied to clipboard!');
+      setTimeout(() => setCopySuccessMessage(''), 2000);
     }).catch(err => {
       console.error('Failed to copy text: ', err);
     });
@@ -112,7 +119,7 @@ export const InventoryPage: React.FC = () => {
         </div>
       </main>
 
-      {/* ADDED: Toast notification for copy success */}
+      {/* Toast notification for copy success */}
       {copySuccessMessage && (
         <div className="fixed bottom-20 left-1/2 -translate-x-1/2 bg-gray-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm">
           {copySuccessMessage}
