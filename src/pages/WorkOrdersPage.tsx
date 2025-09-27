@@ -177,5 +177,3 @@ const WorkOrdersPage: React.FC = () => {
     </div>
   );
 };
-
-export default WorkOrdersPage;
