@@ -9,7 +9,6 @@ import { supabase } from '../services/supabaseClient';
 import { useStore } from '../contexts/StoreContext';
 import { Plus, Minus, CheckCircle } from 'lucide-react';
 
-// UPDATED: Added store_location to types
 type ScanResultData = (Part & { type: 'part'; store_location?: string | null; }) | (Equipment & { type: 'equipment'; store_location?: string | null; });
 
 export const ScanPage: React.FC = () => {
@@ -40,7 +39,6 @@ export const ScanPage: React.FC = () => {
     setScanResult(null);
 
     try {
-      // UPDATED: Added store_location to the select queries
       const [partResult, equipmentResult] = await Promise.all([
         supabase
           .from('parts')
@@ -67,16 +65,9 @@ export const ScanPage: React.FC = () => {
       }
 
       if (listId) {
-        // --- ADD TO LIST MODE ---
-        const newItemPayload = foundItem.type === 'part'
-          ? { list_id: listId, item_type: 'part', part_id: foundItem.id, quantity }
-          : { list_id: listId, item_type: 'equipment', equipment_stock_number: foundItem.stock_number, quantity };
-        
-        const newItem = await addItem(newItemPayload);
-        if (!newItem) throw new Error('Failed to save the scanned item to the list.');
-        setScanSuccess(`Successfully added item to list!`);
+        setScanResult(foundItem);
+        setQuantity(1);
       } else {
-        // --- LOOKUP MODE ---
         setScanResult(foundItem);
       }
 
@@ -85,9 +76,8 @@ export const ScanPage: React.FC = () => {
       setTimeout(() => setScanError(null), 3500);
     } finally {
       setIsProcessing(false);
-      setTimeout(() => setScanSuccess(null), 3500);
     }
-  }, [isProcessing, listId, selectedStore, addItem]);
+  }, [isProcessing, listId, selectedStore]);
 
   const handleAddItemToList = async () => {
     if (!scanResult || !listId) return;
@@ -130,7 +120,6 @@ export const ScanPage: React.FC = () => {
                 <p className="font-bold text-lg">{scanResult.part_number}</p>
                 <p><strong>Bin:</strong> {scanResult.bin_location}</p>
                 <p><strong>Desc:</strong> {scanResult.Part_Description || 'N/A'}</p>
-                {/* ADDED: Display store_location for parts */}
                 <p><strong>Store:</strong> {scanResult.store_location || 'N/A'}</p>
               </div>
             )}
@@ -140,7 +129,6 @@ export const ScanPage: React.FC = () => {
                 <p><strong>Stock #:</strong> {scanResult.stock_number}</p>
                 <p><strong>Serial #:</strong> {scanResult.serial_number || 'N/A'}</p>
                 <p><strong>Desc:</strong> {scanResult.description || 'N/A'}</p>
-                {/* ADDED: Display store_location for equipment */}
                 <p><strong>Store:</strong> {scanResult.store_location || 'N/A'}</p>
               </div>
             )}
@@ -169,64 +157,4 @@ export const ScanPage: React.FC = () => {
       <BottomNav />
     </div>
   );
-};
-
-  return (
-    <div className="min-h-screen flex flex-col pb-16 bg-gray-50">
-      <Header title={pageTitle} showBackButton />
-      
-      <main className="flex-1 p-4 space-y-4 relative">
-        <BarcodeScanner onScanSuccess={handleScan} onScanError={setScanError} />
-        
-        {isProcessing && <p className="text-center text-gray-500">Processing...</p>}
-        {scanError && <div className="p-2 bg-red-100 text-red-800 rounded">{scanError}</div>}
-        {scanSuccess && <div className="p-2 bg-green-100 text-green-800 rounded">{scanSuccess}</div>}
-
-        {/* CHANGED: The overlay is now more complex and shows controls in "Add Mode" */}
-        {scanResult && (
-          <div className="absolute bottom-4 left-4 right-4 bg-black/70 backdrop-blur-sm p-4 rounded-lg shadow-lg animate-fade-in-up">
-            {/* --- Item Info --- */}
-            <div className="text-orange-500">
-              {scanResult.type === 'part' && (
-                <div>
-                  <p className="font-bold text-lg">{scanResult.part_number}</p>
-                  <p><strong>Bin:</strong> {scanResult.bin_location}</p>
-                  <p><strong>Desc:</strong> {scanResult.Part_Description || 'N/A'}</p>
-                </div>
-              )}
-              {scanResult.type === 'equipment' && (
-                 <div>
-                  <p className="font-bold text-lg">{scanResult.make} {scanResult.model}</p>
-                  <p><strong>Stock #:</strong> {scanResult.stock_number}</p>
-                  <p><strong>Serial #:</strong> {scanResult.serial_number || 'N/A'}</p>
-                  <p><strong>Desc:</strong> {scanResult.description || 'N/A'}</p>
-                </div>
-              )}
-            </div>
-            
-            {/* --- Controls (only show in "Add Mode") --- */}
-            {listId && (
-              <div className="mt-4 pt-4 border-t border-white/20 flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <span className="text-white font-medium">Quantity:</span>
-                  <button onClick={() => setQuantity(q => Math.max(1, q - 1))} className="bg-white/20 text-white rounded-full w-8 h-8 font-bold">-</button>
-                  <span className="text-white text-lg font-bold w-8 text-center">{quantity}</span>
-                  <button onClick={() => setQuantity(q => q + 1)} className="bg-white/20 text-white rounded-full w-8 h-8 font-bold">+</button>
-                </div>
-                <button 
-                  onClick={handleAddItemToList}
-                  className="bg-orange-500 text-white font-bold py-2 px-4 rounded-lg flex items-center"
-                >
-                  <CheckCircle className="h-5 w-5 mr-2" />
-                  Add to List
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-      </main>
-      
-      <BottomNav />
-    </div>
-  );
-};
+}; // <-- FIXED: Added the missing closing brace and semicolon
