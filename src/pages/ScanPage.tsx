@@ -9,7 +9,8 @@ import { supabase } from '../services/supabaseClient';
 import { useStore } from '../contexts/StoreContext';
 import { Plus, Minus, CheckCircle } from 'lucide-react';
 
-type ScanResultData = (Part & { type: 'part'; store_location?: string | null; }) | (Equipment & { type: 'equipment'; store_location?: string | null; });
+// ADDED: supplier_invoice_date to the type
+type ScanResultData = (Part & { type: 'part'; store_location?: string | null; }) | (Equipment & { type: 'equipment'; store_location?: string | null; supplier_invoice_date?: string | null; });
 
 export const ScanPage: React.FC = () => {
   const navigate = useNavigate();
@@ -48,7 +49,7 @@ export const ScanPage: React.FC = () => {
           .maybeSingle(),
         supabase
           .from('equipment')
-          .select('*')
+          .select('*') // This already includes all columns
           .or(`stock_number.eq.${barcode},serial_number.eq.${barcode}`)
           .maybeSingle(),
       ]);
@@ -101,6 +102,12 @@ export const ScanPage: React.FC = () => {
       setTimeout(() => setScanSuccess(null), 3500);
     }
   };
+  
+  // ADDED: A helper to format the date nicely
+  const formatDate = (dateString: string | null | undefined) => {
+    if (!dateString) return 'N/A';
+    return new Date(dateString).toLocaleDateString();
+  };
 
   return (
     <div className="min-h-screen flex flex-col pb-16 bg-gray-50">
@@ -128,7 +135,8 @@ export const ScanPage: React.FC = () => {
                 <p className="font-bold text-lg">{scanResult.make} {scanResult.model}</p>
                 <p><strong>Stock #:</strong> {scanResult.stock_number}</p>
                 <p><strong>Serial #:</strong> {scanResult.serial_number || 'N/A'}</p>
-                <p><strong>Desc:</strong> {scanResult.description || 'N/A'}</p>
+                {/* ADDED: Display for supplier_invoice_date */}
+                <p><strong>Invoice Date:</strong> {formatDate(scanResult.supplier_invoice_date)}</p>
                 <p><strong>Store:</strong> {scanResult.store_location || 'N/A'}</p>
               </div>
             )}
@@ -157,4 +165,4 @@ export const ScanPage: React.FC = () => {
       <BottomNav />
     </div>
   );
-}; // <-- FIXED: Added the missing closing brace and semicolon
+};
