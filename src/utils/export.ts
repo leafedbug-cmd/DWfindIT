@@ -1,19 +1,13 @@
 // src/utils/export.ts
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+// CHANGED: Import autoTable separately
+import autoTable from 'jspdf-autotable';
 import { ListItem } from '../store/listItemStore';
 import { ListWithCount } from '../store/listStore';
 
-// Extend the jsPDF interface to include the autoTable method
-declare module 'jspdf' {
-  interface jsPDF {
-    autoTable: (options: any) => jsPDF;
-  }
-}
-
 const DITCH_WITCH_ORANGE = '#EA580C'; // Ditch Witch brand orange for theme
 
-// --- CSV Generation ---
+// --- CSV Generation (No changes needed here) ---
 export function generateCSV(list: ListWithCount, items: ListItem[]): string {
   const headers = ['Type', 'Identifier', 'Details', 'Quantity'];
   const rows = items.map(item => {
@@ -21,8 +15,8 @@ export function generateCSV(list: ListWithCount, items: ListItem[]): string {
       const { make, model, stock_number, serial_number } = item.equipment;
       return [
         'Equipment',
-        stock_number,
-        `${make || ''} ${model || ''} (S/N: ${serial_number || 'N/A'})`,
+        `"${stock_number}"`, // Enclose in quotes to handle potential commas
+        `"${make || ''} ${model || ''} (S/N: ${serial_number || 'N/A'})"`,
         item.quantity
       ];
     }
@@ -30,8 +24,8 @@ export function generateCSV(list: ListWithCount, items: ListItem[]): string {
       const { part_number, bin_location } = item.parts;
       return [
         'Part',
-        part_number,
-        `Bin: ${bin_location || 'N/A'}`,
+        `"${part_number}"`,
+        `"Bin: ${bin_location || 'N/A'}"`,
         item.quantity
       ];
     }
@@ -68,27 +62,26 @@ export function generatePDF(list: ListWithCount, items: ListItem[]): void {
   items.forEach(item => {
     if (item.item_type === 'equipment' && item.equipment) {
       const { make, model, stock_number, serial_number } = item.equipment;
-      const row = [
+      tableRows.push([
         'Equipment',
         stock_number,
         `${make || ''} ${model || ''} (S/N: ${serial_number || 'N/A'})`,
         item.quantity
-      ];
-      tableRows.push(row);
+      ]);
     }
     if (item.item_type === 'part' && item.parts) {
       const { part_number, bin_location } = item.parts;
-      const row = [
+      tableRows.push([
         'Part',
         part_number,
         `Bin: ${bin_location || 'N/A'}`,
         item.quantity
-      ];
-      tableRows.push(row);
+      ]);
     }
   });
 
-  doc.autoTable({
+  // CHANGED: Use the imported autoTable function directly on the doc object
+  autoTable(doc, {
     startY: 50,
     head: [tableColumn],
     body: tableRows,
@@ -98,13 +91,9 @@ export function generatePDF(list: ListWithCount, items: ListItem[]): void {
       textColor: 255,
       fontStyle: 'bold',
     },
-    footStyles: {
-      fillColor: [245, 245, 245], // A light gray
-    },
     didDrawPage: (data) => {
       // Footer
       const pageCount = doc.getNumberOfPages();
-      doc.setFontSize(10);
       doc.text(`Page ${data.pageNumber} of ${pageCount}`, data.settings.margin.left, doc.internal.pageSize.height - 10);
     }
   });
