@@ -5,13 +5,16 @@ import { Header } from '../components/Header';
 import { BottomNav } from '../components/BottomNav';
 import { useListStore } from '../store/listStore';
 import { useListItemStore, ListItem } from '../store/listItemStore';
-import { Trash2, Plus, Package, Hash } from 'lucide-react';
+import { Trash2, Plus, Package, Hash, FileText, FileSpreadsheet } from 'lucide-react';
+// ADDED: Import the new export functions
+import { generateCSV, generatePDF } from '../utils/export';
 
 // A component to render a Part
 const PartItem: React.FC<{ item: ListItem }> = ({ item }) => (
   <>
     <Hash className="h-8 w-8 text-gray-400 mr-4" />
     <div className="flex-grow">
+      {/* Note: changed item.parts?.part_number to reference the nested object */}
       <p className="font-semibold text-gray-900">{item.parts?.part_number}</p>
       <p className="text-sm text-gray-500">Bin: {item.parts?.bin_location}</p>
       <p className="text-sm text-gray-500">Qty: {item.quantity}</p>
@@ -24,6 +27,7 @@ const EquipmentItem: React.FC<{ item: ListItem }> = ({ item }) => (
   <>
     <Package className="h-8 w-8 text-blue-500 mr-4" />
     <div className="flex-grow">
+      {/* Note: changed item.equipment?.make to reference the nested object */}
       <p className="font-semibold text-gray-900">
         {item.equipment?.make} {item.equipment?.model}
       </p>
@@ -54,6 +58,24 @@ export const ListDetailPage: React.FC = () => {
   const handleDeleteItem = (itemId: number) => {
     deleteItem(itemId);
   };
+  
+  // ADDED: Handlers for the export buttons
+  const handleExportCSV = () => {
+    if (!currentList || items.length === 0) return;
+    const csvData = generateCSV(currentList, items);
+    const blob = new Blob([csvData], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `${currentList.name.replace(/\s+/g, '_')}.csv`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  };
+
+  const handleExportPDF = () => {
+    if (!currentList || items.length === 0) return;
+    generatePDF(currentList, items);
+  };
+
 
   if (!currentList) {
     return (
@@ -69,6 +91,26 @@ export const ListDetailPage: React.FC = () => {
       <Header title={currentList.name} showBackButton />
 
       <main className="flex-1 p-4 space-y-4">
+        {/* ADDED: Export buttons section */}
+        <div className="bg-white p-3 rounded-lg shadow-sm border border-gray-200 grid grid-cols-2 gap-3">
+            <button
+                onClick={handleExportPDF}
+                disabled={items.length === 0}
+                className="flex items-center justify-center gap-2 text-sm bg-red-600 text-white px-4 py-2 rounded-lg shadow-sm hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+            >
+                <FileText size={16} />
+                Export PDF
+            </button>
+            <button
+                onClick={handleExportCSV}
+                disabled={items.length === 0}
+                className="flex items-center justify-center gap-2 text-sm bg-green-600 text-white px-4 py-2 rounded-lg shadow-sm hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+            >
+                <FileSpreadsheet size={16} />
+                Export CSV
+            </button>
+        </div>
+
         <div className="bg-white rounded-lg shadow-sm border border-gray-200">
           {isLoading ? (
             <div className="p-6 text-center">Loading items...</div>
@@ -78,7 +120,6 @@ export const ListDetailPage: React.FC = () => {
             <ul className="divide-y divide-gray-200">
               {items.map((item) => (
                 <li key={item.id} className="p-4 flex items-center">
-                  {/* Conditionally render the correct component based on item type */}
                   {item.item_type === 'equipment' && item.equipment ? (
                     <EquipmentItem item={item} />
                   ) : (
