@@ -4,40 +4,60 @@ import { Header } from "../components/Header";
 import { BottomNav } from "../components/BottomNav";
 import { supabase } from "../services/supabaseClient";
 import { useAuthStore } from "../store/authStore";
-import { X, Scan, Save } from "lucide-react";
+import { X, Scan, Save, Eraser } from "lucide-react";
 import { BarcodeScanner } from "../components/BarcodeScanner";
 
-type AnyRow = Record<string, any>;
+// ADDED: A specific type for our form data
+type EquipmentFormState = {
+  manufacturer: string;
+  model: string;
+  serial: string;
+  stock: string;
+  hourmeter: string;
+  // This will hold the original scanned row if it exists
+  scannedData: Record<string, any> | null;
+};
 
-function pick<T = string>(row: AnyRow | null, keys: string[], fallback: T | "" = ""): T | "" {
-  if (!row) return fallback;
-  for (const k of keys) {
-    if (k in row && row[k] != null) return row[k] as T;
-  }
-  return fallback;
-}
+// This helper is no longer needed with the new state management
+// function pick(...)
 
-// FIXED: Added 'export' to make this a named export, which fixes the build error.
 export const WorkOrdersPage: React.FC = () => {
   const { user } = useAuthStore();
   const [isScanning, setIsScanning] = useState(false);
-  const [row, setRow] = useState<AnyRow | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  // manual fields
+  // ADDED: State to manage the equipment form fields
+  const [equipmentForm, setEquipmentForm] = useState<EquipmentFormState>({
+    manufacturer: "",
+    model: "",
+    serial: "",
+    stock: "",
+    hourmeter: "",
+    scannedData: null,
+  });
+
+  // manual contact fields
   const [contactName, setContactName] = useState("");
   const [contactPhone, setContactPhone] = useState("");
   const [jobLocation, setJobLocation] = useState("");
   const [instructions, setInstructions] = useState("");
 
-  const display = {
-    manufacturer: pick(row, ["manufacturer", "make"]),
-    model: pick(row, ["model"]),
-    serial: pick(row, ["serial_number", "sn"]),
-    stock: pick(row, ["stock_number"]),
-    hourmeter: pick<number | string>(row, ["hour_meter", "hours"], "")
+  // Function to update a single field in the equipment form
+  const handleFormChange = (field: keyof EquipmentFormState, value: string) => {
+    setEquipmentForm(prev => ({ ...prev, [field]: value }));
+  };
+  
+  // Function to reset all fields
+  const resetAllFields = () => {
+      setEquipmentForm({ manufacturer: "", model: "", serial: "", stock: "", hourmeter: "", scannedData: null });
+      setContactName("");
+      setContactPhone("");
+      setJobLocation("");
+      setInstructions("");
+      setOk(null);
+      setErr(null);
   };
 
   const handleScanSuccess = async (barcode: string) => {
@@ -49,12 +69,22 @@ export const WorkOrdersPage: React.FC = () => {
       }
       
       if (res.error) throw res.error;
-      if (!res.data) throw new Error(`No equipment found for code: ${barcode}`);
+      if (!res.data) throw new Error(`No equipment found for code: ${barcode}. Please enter details manually.`);
 
-      setRow(res.data as AnyRow);
+      // Populate the form with the scanned data
+      setEquipmentForm({
+        manufacturer: res.data.make || "",
+        model: res.data.model || "",
+        serial: res.data.serial_number || "",
+        stock: res.data.stock_number || "",
+        hourmeter: res.data.hour_meter || res.data.hours || "",
+        scannedData: res.data,
+      });
+
       setIsScanning(false); // Close the scanner modal on success
     } catch (e: any) {
       setErr(e?.message ?? "Lookup failed");
+      setIsScanning(false); // Also close scanner on failure to allow manual entry
     }
   };
 
@@ -62,7 +92,11 @@ export const WorkOrdersPage: React.FC = () => {
     setErr(null);
     setOk(null);
     if (!user?.id) { setErr("Not signed in."); return; }
-    if (!row) { setErr("No equipment has been scanned."); return; }
+    // CHANGED: Validate that a key equipment field is filled, not just that something was scanned
+    if (!equipmentForm.stock && !equipmentForm.serial) {
+      setErr("A Stock # or Serial # is required to create a work order.");
+      return;
+    }
     if (!instructions && !contactName && !contactPhone) {
       setErr("Add at least one detail (instructions, name or phone).");
       return;
@@ -73,17 +107,14 @@ export const WorkOrdersPage: React.FC = () => {
       
       const workOrderData = {
         user_id: user.id,
-        equipment_stock_number: row.stock_number,
-        customer_number: row.customer_number || null,
-        store_location: row.store_location || null,
-        description: `Work order for ${display.manufacturer} ${display.model}. Contact: ${contactName}`,
+        // If equipment was scanned, link it. Otherwise, this will be null.
+        equipment_stock_number: equipmentForm.scannedData?.stock_number || null,
+        // Save all the other details, whether scanned or manually entered
+        description: `Work order for ${equipmentForm.manufacturer} ${equipmentForm.model}. Contact: ${contactName}. Details: ${instructions}`,
         status: "Open",
-        // These fields will come from your manual input form
-        // You would need to add columns to your 'work_orders' table for these
-        // contact_name: contactName || null,
-        // contact_phone: contactPhone || null,
-        // job_location: jobLocation || null,
-        // instructions: instructions || null,
+        // You would need to add columns to your 'work_orders' table for these to be saved
+        // customer_number: equipmentForm.scannedData?.customer_number || null,
+        // store_location: equipmentForm.scannedData?.store_location || null,
       };
 
       const { error } = await supabase.from("work_orders").insert(workOrderData);
@@ -91,12 +122,7 @@ export const WorkOrdersPage: React.FC = () => {
       if (error) throw error;
 
       setOk("Work order saved!");
-      // Reset form after successful save
-      setRow(null);
-      setContactName("");
-      setContactPhone("");
-      setJobLocation("");
-      setInstructions("");
+      resetAllFields();
     } catch (e: any) {
       setErr(e?.message ?? "Failed to save work order");
     } finally {
@@ -119,21 +145,32 @@ export const WorkOrdersPage: React.FC = () => {
           <button
             className="px-3 py-2 rounded bg-orange-600 text-white flex items-center gap-2 disabled:opacity-60"
             onClick={handleSave}
-            disabled={saving || !row}
+            disabled={saving}
             aria-busy={saving}
             title="Save work order"
           >
             <Save size={18} />
             {saving ? "Saving…" : "Save"}
           </button>
+          
+          {/* ADDED: A button to clear all fields */}
+          <button
+            className="px-3 py-2 rounded bg-gray-500 text-white flex items-center gap-2 ml-auto"
+            onClick={resetAllFields}
+            title="Clear all fields"
+          >
+            <Eraser size={18} />
+            Clear
+          </button>
         </div>
 
+        {/* CHANGED: All these inputs are now editable */}
         <div className="grid md:grid-cols-2 gap-4">
-          <input className="w-full px-3 py-2 rounded border bg-gray-100 cursor-not-allowed" placeholder="Manufacturer" value={display.manufacturer} readOnly />
-          <input className="w-full px-3 py-2 rounded border bg-gray-100 cursor-not-allowed" placeholder="Model" value={display.model} readOnly />
-          <input className="w-full px-3 py-2 rounded border bg-gray-100 cursor-not-allowed" placeholder="Serial #" value={display.serial} readOnly />
-          <input className="w-full px-3 py-2 rounded border bg-gray-100 cursor-not-allowed" placeholder="Stock #" value={display.stock} readOnly />
-          <input className="w-full px-3 py-2 rounded border bg-gray-100 cursor-not-allowed" placeholder="Hourmeter" value={display.hourmeter ?? ""} readOnly />
+          <input className="w-full px-3 py-2 rounded border bg-white" placeholder="Manufacturer" value={equipmentForm.manufacturer} onChange={e => handleFormChange('manufacturer', e.target.value)} />
+          <input className="w-full px-3 py-2 rounded border bg-white" placeholder="Model" value={equipmentForm.model} onChange={e => handleFormChange('model', e.target.value)} />
+          <input className="w-full px-3 py-2 rounded border bg-white" placeholder="Serial #" value={equipmentForm.serial} onChange={e => handleFormChange('serial', e.target.value)} />
+          <input className="w-full px-3 py-2 rounded border bg-white" placeholder="Stock #" value={equipmentForm.stock} onChange={e => handleFormChange('stock', e.target.value)} />
+          <input className="w-full px-3 py-2 rounded border bg-white" placeholder="Hourmeter" value={equipmentForm.hourmeter} onChange={e => handleFormChange('hourmeter', e.target.value)} />
         </div>
 
         <div className="grid md:grid-cols-2 gap-4">
@@ -161,7 +198,7 @@ export const WorkOrdersPage: React.FC = () => {
                 onScanError={(msg) => setErr(msg)}
             />
             <p className="text-xs text-gray-500 mt-2">
-              Point the camera at the equipment barcode (stock or serial).
+              Point the camera at the equipment barcode (stock or serial). If not found, you can enter the details manually.
             </p>
           </div>
         </div>
