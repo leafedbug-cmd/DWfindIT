@@ -7,7 +7,6 @@ import { useAuthStore } from "../store/authStore";
 import { X, Scan, Save, Eraser, Wrench } from "lucide-react";
 import { BarcodeScanner } from "../components/BarcodeScanner";
 import { useStore } from "../contexts/StoreContext";
-// ADDED: Import the new store and export utility
 import { useWorkOrderStore, WorkOrderWithEquipment } from "../store/workOrderStore";
 import { generateWorkOrderPDF } from "../utils/workOrderExport";
 
@@ -19,7 +18,6 @@ type EquipmentFormState = {
 export const WorkOrdersPage: React.FC = () => {
   const { user } = useAuthStore();
   const { selectedStore } = useStore();
-  // ADDED: Use the new work order store
   const { workOrders, isLoading: isLoadingWorkOrders, fetchWorkOrders } = useWorkOrderStore();
 
   const [isScanning, setIsScanning] = useState(false);
@@ -37,7 +35,6 @@ export const WorkOrdersPage: React.FC = () => {
   const [jobLocation, setJobLocation] = useState("");
   const [instructions, setInstructions] = useState("");
   
-  // ADDED: Fetch work orders when the component loads
   useEffect(() => {
     if (user) {
         fetchWorkOrders(user.id);
@@ -93,7 +90,7 @@ export const WorkOrdersPage: React.FC = () => {
     try {
       setSaving(true);
       
-      const workOrderData = {
+      const workOrderDataForDb = {
         user_id: user.id,
         equipment_stock_number: equipmentForm.scannedData?.stock_number || null,
         customer_number: customerNumber || null,
@@ -106,21 +103,22 @@ export const WorkOrdersPage: React.FC = () => {
         instructions: instructions || null,
       };
 
-      const { data: savedData, error } = await supabase.from("work_orders").insert(workOrderData).select().single();
+      const { data: savedData, error } = await supabase.from("work_orders").insert(workOrderDataForDb).select().single();
 
       if (error || !savedData) throw error || new Error("Failed to get response after saving.");
+      
+      // FIXED: Pass the complete form data directly to the PDF generator
+      const fullDataForPdf = { ...savedData, ...workOrderDataForDb };
+      generateWorkOrderPDF(fullDataForPdf, equipmentForm);
 
-      // UPDATED: Generate PDF and open email client
-      generateWorkOrderPDF(savedData, { ...equipmentForm, contactName, contactPhone, jobLocation, instructions });
       setOk("Work order saved and PDF downloaded!");
       
-      // Open email client
       const subject = `New Work Order for ${equipmentForm.manufacturer} ${equipmentForm.model}`;
       const body = "A new work order has been created. Please find the PDF (downloaded to your device) and attach it to this email.";
       window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 
       resetAllFields();
-      if (user) fetchWorkOrders(user.id); // Refresh the list of work orders
+      if (user) fetchWorkOrders(user.id);
 
     } catch (e: any) {
       setErr(e?.message ?? "Failed to save work order");
@@ -209,7 +207,6 @@ export const WorkOrdersPage: React.FC = () => {
           </div>
         </div>
       )}
-
       <BottomNav />
     </div>
   );
