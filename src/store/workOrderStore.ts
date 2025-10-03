@@ -2,17 +2,23 @@
 import { create } from 'zustand';
 import { supabase } from '../services/supabaseClient';
 
-// Define the shape of a work order with its related equipment
+// UPDATED: The type now includes all fields needed for the form and PDF
 export interface WorkOrderWithEquipment {
   id: number;
   created_at: string;
   status: string | null;
   description: string | null;
   customer_number: string | null;
+  contact_name: string | null;
+  contact_phone: string | null;
+  job_location: string | null;
+  instructions: string | null;
   equipment: {
     stock_number: string;
+    serial_number: string | null;
     make: string | null;
     model: string | null;
+    hour_meter: string | null; // or whatever the column name is
   } | null;
 }
 
@@ -31,20 +37,12 @@ export const useWorkOrderStore = create<WorkOrderState>((set) => ({
   fetchWorkOrders: async (userId: string) => {
     set({ isLoading: true, error: null });
     try {
-      // This query fetches all work orders for the user and joins the related equipment data
+      // UPDATED: The query now fetches all the necessary fields.
       const { data, error } = await supabase
         .from('work_orders')
         .select(`
-          id,
-          created_at,
-          status,
-          description,
-          customer_number,
-          equipment:equipment_stock_number (
-            stock_number,
-            make,
-            model
-          )
+          *,
+          equipment:equipment_stock_number ( * )
         `)
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
@@ -58,3 +56,4 @@ export const useWorkOrderStore = create<WorkOrderState>((set) => ({
     }
   },
 }));
+

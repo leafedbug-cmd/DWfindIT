@@ -4,7 +4,6 @@ import autoTable from 'jspdf-autotable';
 
 const DITCH_WITCH_ORANGE = '#EA580C';
 
-// UPDATED: The function now accepts the signature image as a base64 string
 export function generateWorkOrderPDF(workOrder: any, signatureImage: string | null) {
   const doc = new jsPDF();
 
@@ -19,7 +18,7 @@ export function generateWorkOrderPDF(workOrder: any, signatureImage: string | nu
     doc.text(`WO #: ${workOrder.id}`, 190, 22, { align: 'right' });
   }
 
-  // Equipment Details
+  // Equipment Details Section
   autoTable(doc, {
     startY: 40,
     head: [['Equipment Details']],
@@ -34,7 +33,7 @@ export function generateWorkOrderPDF(workOrder: any, signatureImage: string | nu
     headStyles: { fillColor: DITCH_WITCH_ORANGE, textColor: 255, fontStyle: 'bold' },
   });
 
-  // Customer & Job Details
+  // Customer & Job Details Section
   autoTable(doc, {
     startY: (doc as any).lastAutoTable.finalY + 10,
     head: [['Job & Customer Details']],
@@ -48,8 +47,8 @@ export function generateWorkOrderPDF(workOrder: any, signatureImage: string | nu
     headStyles: { fillColor: DITCH_WITCH_ORANGE, textColor: 255, fontStyle: 'bold' },
   });
   
-  // Instructions
-  autoTable(doc, {
+  // Instructions Section
+    autoTable(doc, {
     startY: (doc as any).lastAutoTable.finalY + 10,
     head: [['Instructions']],
     body: [[workOrder.instructions]],
@@ -57,19 +56,17 @@ export function generateWorkOrderPDF(workOrder: any, signatureImage: string | nu
     headStyles: { fillColor: DITCH_WITCH_ORANGE, textColor: 255, fontStyle: 'bold' },
   });
 
-  // ADDED: Authorization Text & Signature
+  // Authorization Text & Signature
   const finalY = (doc as any).lastAutoTable.finalY;
   doc.setFontSize(12);
   doc.setTextColor(40);
   doc.text('Repair Authorization & Electronic Signature Agreement', 14, finalY + 15);
-
   const authText = doc.splitTextToSize(
     'I hereby authorize the repair work described above, including any additional work deemed necessary or incidental thereto, along with all required parts and labor. I understand that payment is due upon completion of the work unless alternative arrangements have been agreed to in advance. I acknowledge and consent to an express mechanic\'s lien on this equipment to secure payment for all repairs and any associated fees in the event of non-payment. Customer acknowledges that an unloading fee will be applied if the machine is not unloaded from trailers. Furthermore, if Ditch Witch of Arkansas is required to unload a machine, we are not responsible for any damages that may occur to the equipment or trailer during the loading or unloading process. Furthermore, by signing below, I consent to the use of an electronic signature, which shall have the same legal effect and enforceability as a handwritten signature.',
     180
   );
   doc.setFontSize(8);
   doc.text(authText, 14, finalY + 22);
-
   if (signatureImage) {
     doc.addImage(signatureImage, 'PNG', 14, doc.internal.pageSize.height - 70, 80, 40);
   }
@@ -78,7 +75,6 @@ export function generateWorkOrderPDF(workOrder: any, signatureImage: string | nu
   doc.setFontSize(10);
   doc.text('Customer Signature', 14, doc.internal.pageSize.height - 25);
 
-
   // Footer
   const pageCount = doc.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
@@ -86,5 +82,7 @@ export function generateWorkOrderPDF(workOrder: any, signatureImage: string | nu
     doc.text(`Page ${i} of ${pageCount}`, 14, doc.internal.pageSize.height - 10);
   }
 
-  doc.save(`WorkOrder_${workOrder.stock || 'Manual'}.pdf`);
+  // FIXED: The filename is now unique based on the Work Order ID.
+  doc.save(`WorkOrder_${workOrder.id}.pdf`);
 }
+

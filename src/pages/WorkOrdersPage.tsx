@@ -4,7 +4,7 @@ import { Header } from "../components/Header";
 import { BottomNav } from "../components/BottomNav";
 import { supabase } from "../services/supabaseClient";
 import { useAuthStore } from "../store/authStore";
-import { X, Scan, Save, Eraser, Wrench } from "lucide-react";
+import { X, Scan, Save, Eraser, Wrench, Share2 } from "lucide-react";
 import { BarcodeScanner } from "../components/BarcodeScanner";
 import { useStore } from "../contexts/StoreContext";
 import { useWorkOrderStore, WorkOrderWithEquipment } from "../store/workOrderStore";
@@ -25,7 +25,6 @@ export const WorkOrdersPage: React.FC = () => {
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-
   const [equipmentForm, setEquipmentForm] = useState<EquipmentFormState>({
     manufacturer: "", model: "", serial: "", stock: "", hourmeter: "", scannedData: null,
   });
@@ -35,7 +34,6 @@ export const WorkOrdersPage: React.FC = () => {
   const [contactPhone, setContactPhone] = useState("");
   const [jobLocation, setJobLocation] = useState("");
   const [instructions, setInstructions] = useState("");
-
   const sigCanvas = useRef<SignatureCanvas>(null);
 
   useEffect(() => {
@@ -84,6 +82,35 @@ export const WorkOrdersPage: React.FC = () => {
     }
   };
 
+  const handleOpenWorkOrder = (wo: WorkOrderWithEquipment) => {
+    setEquipmentForm({
+        manufacturer: wo.equipment?.make || "",
+        model: wo.equipment?.model || "",
+        serial: wo.equipment?.serial_number || "",
+        stock: wo.equipment?.stock_number || "",
+        hourmeter: wo.equipment?.hour_meter || "",
+        scannedData: wo.equipment,
+    });
+    setCustomerNumber(wo.customer_number || "");
+    setContactName(wo.contact_name || "");
+    setContactPhone(wo.contact_phone || "");
+    setJobLocation(wo.job_location || "");
+    setInstructions(wo.instructions || "");
+    sigCanvas.current?.clear();
+    window.scrollTo(0, 0);
+  };
+  
+  const handleShareWorkOrder = (wo: WorkOrderWithEquipment) => {
+      const equipmentData = {
+          manufacturer: wo.equipment?.make || 'N/A', model: wo.equipment?.model || 'N/A',
+          serial: wo.equipment?.serial_number || 'N/A', stock: wo.equipment?.stock_number || 'N/A',
+          hourmeter: wo.equipment?.hour_meter || 'N/A',
+      };
+      // Pass the full work order object to the PDF generator.
+      // We pass null for the signature since we don't store it for past orders.
+      generateWorkOrderPDF(wo, null);
+  };
+
   const handleSave = async () => {
     setErr(null);
     setOk(null);
@@ -95,16 +122,11 @@ export const WorkOrdersPage: React.FC = () => {
       setSaving(true);
       
       const fullWorkOrderData = {
-        user_id: user.id,
-        equipment_stock_number: equipmentForm.scannedData?.stock_number || null,
-        customer_number: customerNumber || null,
-        store_location: selectedStore,
-        description: `Work order for ${equipmentForm.manufacturer} ${equipmentForm.model}`,
-        status: "Open",
-        contact_name: contactName || null,
-        contact_phone: contactPhone || null,
-        job_location: jobLocation || null,
-        instructions: instructions || null,
+        user_id: user.id, equipment_stock_number: equipmentForm.scannedData?.stock_number || null,
+        customer_number: customerNumber || null, store_location: selectedStore,
+        description: `Work order for ${equipmentForm.manufacturer} ${equipmentForm.model}`, status: "Open",
+        contact_name: contactName || null, contact_phone: contactPhone || null,
+        job_location: jobLocation || null, instructions: instructions || null,
         ...equipmentForm
       };
       
@@ -123,10 +145,8 @@ export const WorkOrdersPage: React.FC = () => {
       generateWorkOrderPDF({ ...fullWorkOrderData, id: savedData.id }, signatureImage);
       setOk("Work order saved and PDF downloaded!");
       
-      const subject = `New Work Order for ${equipmentForm.manufacturer} ${equipmentForm.model}`;
-      const body = "A new work order has been created. Please find the PDF (downloaded to your device) and attach it to this email.";
-      window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-
+      // REMOVED: Automatic email sharing
+      
       resetAllFields();
       if (user) fetchWorkOrders(user.id);
 
@@ -171,18 +191,9 @@ export const WorkOrdersPage: React.FC = () => {
                 I hereby authorize the repair work described above, including any additional work deemed necessary or incidental thereto, along with all required parts and labor. I understand that payment is due upon completion of the work unless alternative arrangements have been agreed to in advance. I acknowledge and consent to an express mechanic's lien on this equipment to secure payment for all repairs and any associated fees in the event of non-payment. Customer acknowledges that an unloading fee will be applied if the machine is not unloaded from trailers. Furthermore, if Ditch Witch of Arkansas is required to unload a machine, we are not responsible for any damages that may occur to the equipment or trailer during the loading or unloading process. Furthermore, by signing below, I consent to the use of an electronic signature, which shall have the same legal effect and enforceability as a handwritten signature.
               </p>
               <div className="w-full h-40 border bg-white rounded-md">
-                <SignatureCanvas 
-                  ref={sigCanvas}
-                  penColor='black'
-                  canvasProps={{className: 'w-full h-full'}} 
-                />
+                <SignatureCanvas ref={sigCanvas} penColor='black' canvasProps={{className: 'w-full h-full'}} />
               </div>
-              <button 
-                onClick={clearSignature} 
-                className="text-sm text-blue-600 hover:underline"
-              >
-                Clear Signature
-              </button>
+              <button onClick={clearSignature} className="text-sm text-blue-600 hover:underline">Clear Signature</button>
             </div>
 
             {ok && <div className="p-3 bg-green-50 border border-green-200 text-green-800 rounded">{ok}</div>}
@@ -190,13 +201,16 @@ export const WorkOrdersPage: React.FC = () => {
         </div>
 
         <div className="space-y-3">
-          <h2 className="text-xl font-semibold text-gray-800 pt-4">My Recent Work Orders</h2>
+            <h2 className="text-xl font-semibold text-gray-800 pt-4">My Recent Work Orders</h2>
             {isLoadingWorkOrders ? (
                 <p className="text-center text-gray-500">Loading work orders...</p>
             ) : workOrders.length > 0 ? (
                 workOrders.map((wo: WorkOrderWithEquipment) => (
                     <div key={wo.id} className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
-                        <div className="flex items-center">
+                        <div 
+                            className="flex items-center cursor-pointer"
+                            onClick={() => handleOpenWorkOrder(wo)}
+                        >
                             <Wrench className="h-6 w-6 text-orange-500 mr-4"/>
                             <div className="flex-grow">
                                 <p className="font-semibold">{wo.equipment?.make} {wo.equipment?.model}</p>
@@ -206,6 +220,13 @@ export const WorkOrdersPage: React.FC = () => {
                                 <p className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">{wo.status || 'N/A'}</p>
                                 <p className="text-xs text-gray-400 mt-1">{new Date(wo.created_at).toLocaleDateString()}</p>
                             </div>
+                            <button 
+                                onClick={(e) => { e.stopPropagation(); handleShareWorkOrder(wo); }} 
+                                className="ml-4 p-2 text-gray-500 hover:bg-gray-100 rounded-full"
+                                title="Share Work Order"
+                            >
+                                <Share2 size={18} />
+                            </button>
                         </div>
                     </div>
                 ))
@@ -217,18 +238,18 @@ export const WorkOrdersPage: React.FC = () => {
 
       {isScanning && (
         <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg w-full max-w-md p-6">
-            <div className="flex justify-between items-center mb-3">
-              <h3 className="text-lg font-semibold">Scan Equipment</h3>
-              <button onClick={() => setIsScanning(false)} className="text-gray-400 hover:text-gray-600"><X className="h-6 w-6" /></button>
+            <div className="bg-white rounded-lg w-full max-w-md p-6">
+                <div className="flex justify-between items-center mb-3">
+                    <h3 className="text-lg font-semibold">Scan Equipment</h3>
+                    <button onClick={() => setIsScanning(false)} className="text-gray-400 hover:text-gray-600"><X className="h-6 w-6" /></button>
+                </div>
+                <BarcodeScanner onScanSuccess={(text) => handleScanSuccess(text)} onScanError={(msg) => setErr(msg)} />
+                <p className="text-xs text-gray-500 mt-2">Point the camera at the equipment barcode.</p>
             </div>
-            <BarcodeScanner onScanSuccess={(text) => handleScanSuccess(text)} onScanError={(msg) => setErr(msg)} />
-            <p className="text-xs text-gray-500 mt-2">Point the camera at the equipment barcode.</p>
-          </div>
         </div>
       )}
-
       <BottomNav />
     </div>
   );
 };
+
