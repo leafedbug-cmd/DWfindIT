@@ -6,52 +6,44 @@ import { supabase } from "../services/supabaseClient";
 import { useAuthStore } from "../store/authStore";
 import { X, Scan, Save, Eraser } from "lucide-react";
 import { BarcodeScanner } from "../components/BarcodeScanner";
+// ADDED: Import the useStore hook to get the selected store
+import { useStore } from "../contexts/StoreContext";
 
-// ADDED: A specific type for our form data
 type EquipmentFormState = {
   manufacturer: string;
   model: string;
   serial: string;
   stock: string;
   hourmeter: string;
-  // This will hold the original scanned row if it exists
   scannedData: Record<string, any> | null;
 };
 
-// This helper is no longer needed with the new state management
-// function pick(...)
-
 export const WorkOrdersPage: React.FC = () => {
   const { user } = useAuthStore();
+  // ADDED: Get selectedStore from context
+  const { selectedStore } = useStore();
   const [isScanning, setIsScanning] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  // ADDED: State to manage the equipment form fields
   const [equipmentForm, setEquipmentForm] = useState<EquipmentFormState>({
-    manufacturer: "",
-    model: "",
-    serial: "",
-    stock: "",
-    hourmeter: "",
-    scannedData: null,
+    manufacturer: "", model: "", serial: "", stock: "", hourmeter: "", scannedData: null,
   });
 
-  // manual contact fields
+  const [customerNumber, setCustomerNumber] = useState("");
   const [contactName, setContactName] = useState("");
   const [contactPhone, setContactPhone] = useState("");
   const [jobLocation, setJobLocation] = useState("");
   const [instructions, setInstructions] = useState("");
 
-  // Function to update a single field in the equipment form
   const handleFormChange = (field: keyof EquipmentFormState, value: string) => {
     setEquipmentForm(prev => ({ ...prev, [field]: value }));
   };
   
-  // Function to reset all fields
   const resetAllFields = () => {
       setEquipmentForm({ manufacturer: "", model: "", serial: "", stock: "", hourmeter: "", scannedData: null });
+      setCustomerNumber("");
       setContactName("");
       setContactPhone("");
       setJobLocation("");
@@ -71,7 +63,6 @@ export const WorkOrdersPage: React.FC = () => {
       if (res.error) throw res.error;
       if (!res.data) throw new Error(`No equipment found for code: ${barcode}. Please enter details manually.`);
 
-      // Populate the form with the scanned data
       setEquipmentForm({
         manufacturer: res.data.make || "",
         model: res.data.model || "",
@@ -80,11 +71,12 @@ export const WorkOrdersPage: React.FC = () => {
         hourmeter: res.data.hour_meter || res.data.hours || "",
         scannedData: res.data,
       });
+      setCustomerNumber(res.data.customer_number || "");
 
-      setIsScanning(false); // Close the scanner modal on success
+      setIsScanning(false);
     } catch (e: any) {
       setErr(e?.message ?? "Lookup failed");
-      setIsScanning(false); // Also close scanner on failure to allow manual entry
+      setIsScanning(false);
     }
   };
 
@@ -92,29 +84,28 @@ export const WorkOrdersPage: React.FC = () => {
     setErr(null);
     setOk(null);
     if (!user?.id) { setErr("Not signed in."); return; }
-    // CHANGED: Validate that a key equipment field is filled, not just that something was scanned
     if (!equipmentForm.stock && !equipmentForm.serial) {
-      setErr("A Stock # or Serial # is required to create a work order.");
+      setErr("A Stock # or Serial # is required.");
       return;
     }
-    if (!instructions && !contactName && !contactPhone) {
-      setErr("Add at least one detail (instructions, name or phone).");
-      return;
-    }
+    // Note: We don't validate jobLocation as it is optional
 
     try {
       setSaving(true);
       
+      // UPDATED: The data payload now includes all manual fields and the store location
       const workOrderData = {
         user_id: user.id,
-        // If equipment was scanned, link it. Otherwise, this will be null.
         equipment_stock_number: equipmentForm.scannedData?.stock_number || null,
-        // Save all the other details, whether scanned or manually entered
+        customer_number: customerNumber || null,
+        store_location: selectedStore, // Automatically add the user's selected store
         description: `Work order for ${equipmentForm.manufacturer} ${equipmentForm.model}. Contact: ${contactName}. Details: ${instructions}`,
         status: "Open",
-        // You would need to add columns to your 'work_orders' table for these to be saved
-        // customer_number: equipmentForm.scannedData?.customer_number || null,
-        // store_location: equipmentForm.scannedData?.store_location || null,
+        // These fields are being added to the database in the next step
+        contact_name: contactName || null,
+        contact_phone: contactPhone || null,
+        job_location: jobLocation || null,
+        instructions: instructions || null,
       };
 
       const { error } = await supabase.from("work_orders").insert(workOrderData);
@@ -135,36 +126,19 @@ export const WorkOrdersPage: React.FC = () => {
       <Header title="Work Orders" />
       <main className="p-4 pb-6 space-y-4">
         <div className="flex gap-3">
-          <button
-            className="px-3 py-2 rounded bg-black text-white flex items-center gap-2"
-            onClick={() => setIsScanning(true)}
-          >
+          <button className="px-3 py-2 rounded bg-black text-white flex items-center gap-2" onClick={() => setIsScanning(true)}>
             <Scan size={18}/> Scan Equipment
           </button>
-
-          <button
-            className="px-3 py-2 rounded bg-orange-600 text-white flex items-center gap-2 disabled:opacity-60"
-            onClick={handleSave}
-            disabled={saving}
-            aria-busy={saving}
-            title="Save work order"
-          >
+          <button className="px-3 py-2 rounded bg-orange-600 text-white flex items-center gap-2 disabled:opacity-60" onClick={handleSave} disabled={saving}>
             <Save size={18} />
             {saving ? "Saving…" : "Save"}
           </button>
-          
-          {/* ADDED: A button to clear all fields */}
-          <button
-            className="px-3 py-2 rounded bg-gray-500 text-white flex items-center gap-2 ml-auto"
-            onClick={resetAllFields}
-            title="Clear all fields"
-          >
+          <button className="px-3 py-2 rounded bg-gray-500 text-white flex items-center gap-2 ml-auto" onClick={resetAllFields}>
             <Eraser size={18} />
             Clear
           </button>
         </div>
 
-        {/* CHANGED: All these inputs are now editable */}
         <div className="grid md:grid-cols-2 gap-4">
           <input className="w-full px-3 py-2 rounded border bg-white" placeholder="Manufacturer" value={equipmentForm.manufacturer} onChange={e => handleFormChange('manufacturer', e.target.value)} />
           <input className="w-full px-3 py-2 rounded border bg-white" placeholder="Model" value={equipmentForm.model} onChange={e => handleFormChange('model', e.target.value)} />
@@ -173,9 +147,13 @@ export const WorkOrdersPage: React.FC = () => {
           <input className="w-full px-3 py-2 rounded border bg-white" placeholder="Hourmeter" value={equipmentForm.hourmeter} onChange={e => handleFormChange('hourmeter', e.target.value)} />
         </div>
 
+        {/* UPDATED: This section now includes the Store Location */}
         <div className="grid md:grid-cols-2 gap-4">
+          <input className="w-full px-3 py-2 rounded border bg-white" placeholder="Customer Number" value={customerNumber} onChange={e=>setCustomerNumber(e.target.value)} />
           <input className="w-full px-3 py-2 rounded border bg-white" placeholder="Contact Name" value={contactName} onChange={e=>setContactName(e.target.value)} />
           <input className="w-full px-3 py-2 rounded border bg-white" placeholder="Contact Phone" value={contactPhone} onChange={e=>setContactPhone(e.target.value)} />
+          {/* Added a read-only field for store location */}
+          <input className="w-full px-3 py-2 rounded border bg-gray-100 cursor-not-allowed" placeholder="Store Location" value={selectedStore} readOnly />
           <input className="w-full px-3 py-2 rounded border bg-white md:col-span-2" placeholder="Job Location (optional)" value={jobLocation} onChange={e=>setJobLocation(e.target.value)} />
           <textarea className="w-full px-3 py-2 rounded border bg-white md:col-span-2 h-28" placeholder="Instructions" value={instructions} onChange={e=>setInstructions(e.target.value)} />
         </div>
@@ -193,17 +171,13 @@ export const WorkOrdersPage: React.FC = () => {
                 <X className="h-6 w-6" />
               </button>
             </div>
-            <BarcodeScanner 
-                onScanSuccess={(text) => handleScanSuccess(text)} 
-                onScanError={(msg) => setErr(msg)}
-            />
+            <BarcodeScanner onScanSuccess={handleScanSuccess} onScanError={(msg) => setErr(msg)} />
             <p className="text-xs text-gray-500 mt-2">
-              Point the camera at the equipment barcode (stock or serial). If not found, you can enter the details manually.
+              Point the camera at the equipment barcode.
             </p>
           </div>
         </div>
       )}
-
       <BottomNav />
     </div>
   );
