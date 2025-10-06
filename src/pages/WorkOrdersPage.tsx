@@ -8,7 +8,6 @@ import { X, Scan, Save, Eraser, Wrench } from "lucide-react";
 import { BarcodeScanner } from "../components/BarcodeScanner";
 import { useStore } from "../contexts/StoreContext";
 import { useWorkOrderStore, WorkOrderWithEquipment } from "../store/workOrderStore";
-import { generateWorkOrderPDF } from "../utils/workOrderExport";
 import SignatureCanvas from 'react-signature-canvas';
 
 type EquipmentFormState = {
@@ -115,6 +114,7 @@ export const WorkOrdersPage: React.FC = () => {
       if (error || !savedData) throw error || new Error("Failed to get response after saving.");
 
       const fullDataForPdf = { ...savedData, ...workOrderData };
+      const { generateWorkOrderPDF } = await import("../utils/workOrderExport");
       generateWorkOrderPDF(fullDataForPdf, equipmentForm);
       setOk("Work order saved and PDF downloaded!");
       

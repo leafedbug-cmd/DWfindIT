@@ -7,7 +7,6 @@ import { useListStore } from '../store/listStore';
 import { useListItemStore, ListItem } from '../store/listItemStore';
 import { Trash2, Plus, Package, Hash, FileText, FileSpreadsheet } from 'lucide-react';
 // ADDED: Import the new export functions
-import { generateCSV, generatePDF } from '../utils/export';
 
 // A component to render a Part
 const PartItem: React.FC<{ item: ListItem }> = ({ item }) => (
@@ -60,8 +59,9 @@ export const ListDetailPage: React.FC = () => {
   };
   
   // ADDED: Handlers for the export buttons
-  const handleExportCSV = () => {
+  const handleExportCSV = async () => {
     if (!currentList || items.length === 0) return;
+    const { generateCSV } = await import("../utils/export");
     const csvData = generateCSV(currentList, items);
     const blob = new Blob([csvData], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
@@ -71,8 +71,9 @@ export const ListDetailPage: React.FC = () => {
     URL.revokeObjectURL(link.href);
   };
 
-  const handleExportPDF = () => {
+  const handleExportPDF = async () => {
     if (!currentList || items.length === 0) return;
+    const { generatePDF } = await import("../utils/export");
     generatePDF(currentList, items);
   };
 

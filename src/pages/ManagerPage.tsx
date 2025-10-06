@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Header } from '../components/Header';
 import { BottomNav } from '../components/BottomNav';
 import { useStore } from '../contexts/StoreContext';
-import { supabase } from '../services/supabase';
+import { supabase } from '../services/supabaseClient';
 import { ChevronRight } from 'lucide-react';
 
 type ListRow = { id: string; name: string; user_id: string; store_location: string | null; updated_at: string | null; };
@@ -18,6 +18,12 @@ export const ManagerPage: React.FC = () => {
   const [expanded, setExpanded] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!selectedStore) {
+      setLists([]);
+      setProfiles({});
+      return;
+    }
+
     let alive = true;
     (async () => {
       try {

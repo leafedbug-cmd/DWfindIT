@@ -32,6 +32,12 @@ const ManagerSection: React.FC = () => {
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!selectedStore) {
+      setEmployees([]);
+      setEmployeeLists({});
+      return;
+    }
+
     const fetchManagerData = async () => {
       setLoading(true);
       setError(null);

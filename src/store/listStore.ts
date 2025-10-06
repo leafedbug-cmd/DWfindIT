@@ -1,7 +1,14 @@
 // src/store/listStore.ts
 import { create } from 'zustand';
-import { supabase } from '../services/supabaseClient'; // Corrected import
-import type { ListWithCount } from './listItemStore'; // We'll define this in the next file
+import { supabase } from '../services/supabaseClient';
+
+export type ListWithCount = {
+  id: string;
+  created_at: string;
+  name: string;
+  user_id: string;
+  item_count: number;
+};
 
 interface ListState {
   lists: ListWithCount[];
