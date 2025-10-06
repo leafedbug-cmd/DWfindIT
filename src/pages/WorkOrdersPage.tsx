@@ -9,7 +9,7 @@ import { BarcodeScanner } from "../components/BarcodeScanner";
 import { useStore } from "../contexts/StoreContext";
 import { useWorkOrderStore, WorkOrderWithEquipment } from "../store/workOrderStore";
 import { generateWorkOrderPDF } from "../utils/workOrderExport";
-import SignatureCanvas from 'react-signature-canvas'; // ADDED
+import SignatureCanvas from 'react-signature-canvas';
 
 type EquipmentFormState = {
   manufacturer: string; model: string; serial: string; stock: string; hourmeter: string;
@@ -37,7 +37,6 @@ export const WorkOrdersPage: React.FC = () => {
   const [instructions, setInstructions] = useState("");
   const [winterizationRequired, setWinterizationRequired] = useState(false);
 
-  // ADDED: Ref for the signature pad
   const sigPad = useRef<SignatureCanvas>(null);
   
   useEffect(() => {
@@ -58,7 +57,7 @@ export const WorkOrdersPage: React.FC = () => {
       setJobLocation("");
       setInstructions("");
       setWinterizationRequired(false);
-      sigPad.current?.clear(); // Clear signature pad
+      sigPad.current?.clear();
       setOk(null);
       setErr(null);
   };
@@ -108,7 +107,7 @@ export const WorkOrdersPage: React.FC = () => {
         job_location: jobLocation || null,
         instructions: instructions || null,
         winterization_required: winterizationRequired,
-        signature: signatureImage, // ADDED
+        signature: signatureImage,
       };
 
       const { data: savedData, error } = await supabase.from("work_orders").insert(workOrderData).select().single();
@@ -177,7 +176,6 @@ export const WorkOrdersPage: React.FC = () => {
                 </p>
             </div>
 
-            {/* ADDED: Repair Authorization & Signature Section */}
             <div className="pt-4 border-t border-gray-200">
                 <h3 className="font-medium text-gray-700">Repair Authorization & Signature</h3>
                 <p className="mt-2 text-xs text-gray-500">
@@ -204,11 +202,51 @@ export const WorkOrdersPage: React.FC = () => {
         
         <div className="space-y-3">
             <h2 className="text-xl font-semibold text-gray-800 pt-4">My Recent Work Orders</h2>
-            {/* ... view existing work orders section remains the same ... */}
+            {isLoadingWorkOrders ? (
+                <p className="text-center text-gray-500">Loading work orders...</p>
+            ) : workOrders.length > 0 ? (
+                workOrders.map((wo: WorkOrderWithEquipment) => (
+                    <div key={wo.id} className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+                        <div className="flex items-center">
+                            <Wrench className="h-6 w-6 text-orange-500 mr-4"/>
+                            <div className="flex-grow">
+                                <p className="font-semibold">{wo.equipment?.make} {wo.equipment?.model}</p>
+                                <p className="text-sm text-gray-500">Stock #: {wo.equipment?.stock_number}</p>
+                            </div>
+                            <div className="text-right">
+                                <p className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">{wo.status || 'N/A'}</p>
+                                <p className="text-xs text-gray-400 mt-1">{new Date(wo.created_at).toLocaleDateString()}</p>
+                            </div>
+                        </div>
+                    </div>
+                ))
+            ) : (
+                <p className="text-center text-gray-500 bg-white p-4 rounded-lg border">No work orders found.</p>
+            )}
         </div>
       </main>
 
-      {isScanning && ( /* ... scanner modal remains the same ... */ )}
+      {/* FIXED: The invalid comment has been replaced with the full modal code */}
+      {isScanning && (
+        <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg w-full max-w-md p-6">
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="text-lg font-semibold">Scan Equipment</h3>
+              <button onClick={() => setIsScanning(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+            <BarcodeScanner 
+                onScanSuccess={(text) => handleScanSuccess(text)} 
+                onScanError={(msg) => setErr(msg)}
+            />
+            <p className="text-xs text-gray-500 mt-2">
+              Point the camera at the equipment barcode.
+            </p>
+          </div>
+        </div>
+      )}
+
       <BottomNav />
     </div>
   );
