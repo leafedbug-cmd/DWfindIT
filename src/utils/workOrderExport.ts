@@ -4,85 +4,78 @@ import autoTable from 'jspdf-autotable';
 
 const DITCH_WITCH_ORANGE = '#EA580C';
 
-export function generateWorkOrderPDF(workOrder: any, signatureImage: string | null) {
+export function generateWorkOrderPDF(workOrderData: any, equipmentData: any) {
   const doc = new jsPDF();
 
-  // Header
   doc.setFontSize(22);
   doc.setTextColor(DITCH_WITCH_ORANGE);
   doc.text('Work Order', 14, 22);
+
   doc.setFontSize(10);
   doc.setTextColor(100);
   doc.text(`Date Created: ${new Date().toLocaleDateString()}`, 14, 28);
-  if (workOrder.id) {
-    doc.text(`WO #: ${workOrder.id}`, 190, 22, { align: 'right' });
+  if (workOrderData.id) {
+    doc.text(`WO #: ${workOrderData.id}`, 190, 22, { align: 'right' });
   }
 
-  // Equipment Details Section
   autoTable(doc, {
     startY: 40,
     head: [['Equipment Details']],
     body: [
-      ['Manufacturer', workOrder.manufacturer],
-      ['Model', workOrder.model],
-      ['Stock #', workOrder.stock],
-      ['Serial #', workOrder.serial],
-      ['Hourmeter', workOrder.hourmeter],
+      ['Manufacturer', equipmentData.manufacturer],
+      ['Model', equipmentData.model],
+      ['Stock #', equipmentData.stock],
+      ['Serial #', equipmentData.serial],
+      ['Hourmeter', equipmentData.hourmeter],
     ],
     theme: 'plain',
     headStyles: { fillColor: DITCH_WITCH_ORANGE, textColor: 255, fontStyle: 'bold' },
   });
 
-  // Customer & Job Details Section
   autoTable(doc, {
     startY: (doc as any).lastAutoTable.finalY + 10,
     head: [['Job & Customer Details']],
     body: [
-      ['Customer #', workOrder.customer_number],
-      ['Contact Name', workOrder.contact_name],
-      ['Contact Phone', workOrder.contact_phone],
-      ['Job Location', workOrder.job_location],
+      ['Customer #', workOrderData.customer_number],
+      ['Contact Name', workOrderData.contact_name],
+      ['Contact Phone', workOrderData.contact_phone],
+      ['Job Location', workOrderData.job_location],
     ],
     theme: 'plain',
     headStyles: { fillColor: DITCH_WITCH_ORANGE, textColor: 255, fontStyle: 'bold' },
   });
   
-  // Instructions Section
-    autoTable(doc, {
+  autoTable(doc, {
     startY: (doc as any).lastAutoTable.finalY + 10,
     head: [['Instructions']],
-    body: [[workOrder.instructions]],
+    body: [[workOrderData.instructions]],
+    theme: 'plain',
+    headStyles: { fillColor: DITCH_WITCH_ORANGE, textColor: 255, fontStyle: 'bold' },
+  });
+  
+  // ADDED: Winterization section for the PDF
+  autoTable(doc, {
+    startY: (doc as any).lastAutoTable.finalY + 10,
+    head: [['Winterization Required?*']],
+    body: [
+      [`${workOrderData.winterization_required ? 'YES' : 'NO'}`],
+      [{
+          content: `*If machine is marked as winterized above, Ditch Witch of Arkansas will not be responsible for any damage to machine from freezing. If Ditch Witch Of Arkansas is required to winterize machine an extra charge will be applied to Work Order.`,
+          styles: { fontSize: 8, textColor: 100 }
+      }]
+    ],
     theme: 'plain',
     headStyles: { fillColor: DITCH_WITCH_ORANGE, textColor: 255, fontStyle: 'bold' },
   });
 
-  // Authorization Text & Signature
-  const finalY = (doc as any).lastAutoTable.finalY;
-  doc.setFontSize(12);
-  doc.setTextColor(40);
-  doc.text('Repair Authorization & Electronic Signature Agreement', 14, finalY + 15);
-  const authText = doc.splitTextToSize(
-    'I hereby authorize the repair work described above, including any additional work deemed necessary or incidental thereto, along with all required parts and labor. I understand that payment is due upon completion of the work unless alternative arrangements have been agreed to in advance. I acknowledge and consent to an express mechanic\'s lien on this equipment to secure payment for all repairs and any associated fees in the event of non-payment. Customer acknowledges that an unloading fee will be applied if the machine is not unloaded from trailers. Furthermore, if Ditch Witch of Arkansas is required to unload a machine, we are not responsible for any damages that may occur to the equipment or trailer during the loading or unloading process. Furthermore, by signing below, I consent to the use of an electronic signature, which shall have the same legal effect and enforceability as a handwritten signature.',
-    180
-  );
-  doc.setFontSize(8);
-  doc.text(authText, 14, finalY + 22);
-  if (signatureImage) {
-    doc.addImage(signatureImage, 'PNG', 14, doc.internal.pageSize.height - 70, 80, 40);
-  }
-  doc.setLineWidth(0.5);
-  doc.line(14, doc.internal.pageSize.height - 30, 100, doc.internal.pageSize.height - 30);
-  doc.setFontSize(10);
-  doc.text('Customer Signature', 14, doc.internal.pageSize.height - 25);
-
-  // Footer
   const pageCount = doc.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
+    doc.setFontSize(10);
     doc.text(`Page ${i} of ${pageCount}`, 14, doc.internal.pageSize.height - 10);
   }
 
-  // FIXED: The filename is now unique based on the Work Order ID.
-  doc.save(`WorkOrder_${workOrder.id}.pdf`);
+  const timestamp = new Date().getTime();
+  const fileName = `WorkOrder_${equipmentData.stock || 'Manual'}_${timestamp}.pdf`;
+  doc.save(fileName);
 }
-
