@@ -9,8 +9,7 @@ import { supabase } from '../services/supabaseClient';
 import { useStore } from '../contexts/StoreContext';
 import { Plus, Minus, CheckCircle } from 'lucide-react';
 
-// ADDED: supplier_invoice_date to the type
-type ScanResultData = (Part & { type: 'part'; store_location?: string | null; }) | (Equipment & { type: 'equipment'; store_location?: string | null; supplier_invoice_date?: string | null; });
+type ScanResultData = (Part & { type: 'part'; store_location?: string | null; }) | (Equipment & { type: 'equipment'; store_location?: string | null; });
 
 export const ScanPage: React.FC = () => {
   const navigate = useNavigate();
@@ -49,7 +48,7 @@ export const ScanPage: React.FC = () => {
           .maybeSingle(),
         supabase
           .from('equipment')
-          .select('*') // This already includes all columns
+          .select('*')
           .or(`stock_number.eq.${barcode},serial_number.eq.${barcode}`)
           .maybeSingle(),
       ]);
@@ -61,15 +60,11 @@ export const ScanPage: React.FC = () => {
         foundItem = { ...equipmentResult.data, type: 'equipment' };
       }
 
-      if (!foundItem) {
-        throw new Error(`No part or equipment found for barcode "${barcode}".`);
-      }
-
-      if (listId) {
+      if (foundItem) {
         setScanResult(foundItem);
         setQuantity(1);
       } else {
-        setScanResult(foundItem);
+        throw new Error(`No part or equipment found for barcode "${barcode}".`);
       }
 
     } catch (error: any) {
@@ -81,7 +76,8 @@ export const ScanPage: React.FC = () => {
   }, [isProcessing, listId, selectedStore]);
 
   const handleAddItemToList = async () => {
-    if (!scanResult || !listId) return;
+    if (!scanResult || !listId || quantity <= 0) return;
+
     setIsProcessing(true);
     setScanError(null);
     try {
@@ -103,7 +99,6 @@ export const ScanPage: React.FC = () => {
     }
   };
   
-  // ADDED: A helper to format the date nicely
   const formatDate = (dateString: string | null | undefined) => {
     if (!dateString) return 'N/A';
     return new Date(dateString).toLocaleDateString();
@@ -121,37 +116,50 @@ export const ScanPage: React.FC = () => {
         {scanSuccess && <div className="p-2 bg-green-100 text-green-800 rounded">{scanSuccess}</div>}
 
         {scanResult && (
-          <div className="absolute bottom-4 left-4 right-4 bg-black/70 backdrop-blur-sm text-orange-500 p-4 rounded-lg shadow-lg animate-fade-in-up">
-            {scanResult.type === 'part' && (
-              <div>
-                <p className="font-bold text-lg">{scanResult.part_number}</p>
-                <p><strong>Bin:</strong> {scanResult.bin_location}</p>
-                <p><strong>Desc:</strong> {scanResult.Part_Description || 'N/A'}</p>
-                <p><strong>Store:</strong> {scanResult.store_location || 'N/A'}</p>
-              </div>
-            )}
-            {scanResult.type === 'equipment' && (
-               <div>
-                <p className="font-bold text-lg">{scanResult.make} {scanResult.model}</p>
-                <p><strong>Stock #:</strong> {scanResult.stock_number}</p>
-                <p><strong>Serial #:</strong> {scanResult.serial_number || 'N/A'}</p>
-                {/* ADDED: Display for supplier_invoice_date */}
-                <p><strong>Invoice Date:</strong> {formatDate(scanResult.supplier_invoice_date)}</p>
-                <p><strong>Store:</strong> {scanResult.store_location || 'N/A'}</p>
-              </div>
-            )}
+          <div className="absolute bottom-4 left-4 right-4 bg-black/70 backdrop-blur-sm p-4 rounded-lg shadow-lg animate-fade-in-up">
+            <div className="text-orange-500">
+              {scanResult.type === 'part' && (
+                <div>
+                  <p className="font-bold text-lg">{scanResult.part_number}</p>
+                  <p><strong>Bin:</strong> {scanResult.bin_location}</p>
+                  <p><strong>Desc:</strong> {scanResult.Part_Description || 'N/A'}</p>
+                  <p><strong>Store:</strong> {scanResult.store_location || 'N/A'}</p>
+                </div>
+              )}
+              {scanResult.type === 'equipment' && (
+                 <div>
+                  <p className="font-bold text-lg">{scanResult.make} {scanResult.model}</p>
+                  <p><strong>Stock #:</strong> {scanResult.stock_number}</p>
+                  <p><strong>Serial #:</strong> {scanResult.serial_number || 'N/A'}</p>
+                  <p><strong>Invoice Date:</strong> {formatDate(scanResult.supplier_invoice_date)}</p>
+                  <p><strong>Store:</strong> {scanResult.store_location || 'N/A'}</p>
+                </div>
+              )}
+            </div>
             
             {listId && (
               <div className="mt-4 pt-4 border-t border-white/20 flex items-center justify-between">
+                {/* UPDATED: Quantity controls */}
                 <div className="flex items-center space-x-2">
                   <span className="text-white font-medium">Quantity:</span>
-                  <button onClick={() => setQuantity(q => Math.max(1, q - 1))} className="bg-white/20 text-white rounded-full w-8 h-8 font-bold">-</button>
-                  <span className="text-white text-lg font-bold w-8 text-center">{quantity}</span>
-                  <button onClick={() => setQuantity(q => q + 1)} className="bg-white/20 text-white rounded-full w-8 h-8 font-bold">+</button>
+                  <button onClick={() => setQuantity(q => Math.max(0, q - 1))} className="bg-white/20 text-white rounded-full w-8 h-8 font-bold text-lg">-</button>
+                  
+                  {/* The number is now a direct-entry input field */}
+                  <input
+                    type="number"
+                    value={quantity}
+                    onChange={(e) => setQuantity(Math.max(0, parseInt(e.target.value, 10) || 0))}
+                    className="bg-transparent text-white text-lg font-bold w-16 text-center focus:outline-none focus:ring-2 focus:ring-orange-500 rounded-md"
+                  />
+
+                  <button onClick={() => setQuantity(q => q + 1)} className="bg-white/20 text-white rounded-full w-8 h-8 font-bold text-lg">+</button>
                 </div>
+
                 <button 
                   onClick={handleAddItemToList}
-                  className="bg-orange-500 text-white font-bold py-2 px-4 rounded-lg flex items-center"
+                  // The button is now disabled if the quantity is zero
+                  disabled={quantity === 0 || isProcessing}
+                  className="bg-orange-500 text-white font-bold py-2 px-4 rounded-lg flex items-center disabled:bg-gray-500 disabled:cursor-not-allowed"
                 >
                   <CheckCircle className="h-5 w-5 mr-2" />
                   Add to List
