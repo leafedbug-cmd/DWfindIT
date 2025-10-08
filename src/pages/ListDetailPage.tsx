@@ -9,7 +9,6 @@ import { supabase } from '../services/supabaseClient';
 import { useStore } from '../contexts/StoreContext';
 import { Trash2, Plus, Package, FileText, FileSpreadsheet, Search, Minus } from 'lucide-react';
 import { generateCSV, generatePDF } from '../utils/export';
-import PartIcon from '../assets/COPYiconFINDitAPP.jpg'; // Import the icon
 
 // --- Numeric Keypad Component (for Quantity) ---
 const Keypad = ({ initialValue, onDone, onCancel }: { initialValue: number, onDone: (value: number) => void, onCancel: () => void }) => {
@@ -137,7 +136,7 @@ const ItemDetails: React.FC<{ item: ListItem }> = ({ item }) => {
     if (item.item_type === 'part' && item.parts) {
         return (
             <>
-                <img src={PartIcon} alt="Part Icon" className="h-8 w-8 mr-4 flex-shrink-0" />
+                <img src="/COPYiconFINDitAPP.PNG" alt="Part Icon" className="h-8 w-8 mr-4 flex-shrink-0" />
                 <div className="flex-grow">
                     <p className="font-semibold text-gray-900">{item.parts.part_number}</p>
                     <p className="text-sm text-gray-500">Bin: {item.parts.bin_location}</p>
@@ -319,3 +318,4 @@ export const ListDetailPage: React.FC = () => {
     </div>
   );
 };
+
