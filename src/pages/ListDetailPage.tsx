@@ -7,7 +7,7 @@ import { useListStore } from '../store/listStore';
 import { useListItemStore, ListItem, Part, Equipment } from '../store/listItemStore';
 import { supabase } from '../services/supabaseClient';
 import { useStore } from '../contexts/StoreContext';
-import { Trash2, Plus, Package, Hash, FileText, FileSpreadsheet, Search, Minus } from 'lucide-react';
+import { Trash2, Plus, Package, FileText, FileSpreadsheet, Search, Minus } from 'lucide-react';
 import { generateCSV, generatePDF } from '../utils/export';
 
 // --- Numeric Keypad Component (for Quantity) ---
@@ -136,7 +136,7 @@ const ItemDetails: React.FC<{ item: ListItem }> = ({ item }) => {
     if (item.item_type === 'part' && item.parts) {
         return (
             <>
-                <Hash className="h-8 w-8 text-gray-400 mr-4 flex-shrink-0" />
+                <img src="/COPYiconFINDitAPP.jpg" alt="Part Icon" className="h-8 w-8 mr-4 flex-shrink-0" />
                 <div className="flex-grow">
                     <p className="font-semibold text-gray-900">{item.parts.part_number}</p>
                     <p className="text-sm text-gray-500">Bin: {item.parts.bin_location}</p>
