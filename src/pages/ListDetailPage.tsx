@@ -1,5 +1,5 @@
 // src/pages/ListDetailPage.tsx
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Header } from '../components/Header';
 import { BottomNav } from '../components/BottomNav';
@@ -120,22 +120,39 @@ const SearchKeypad = ({ onSearch, onCancel, isSearching, searchError }: { onSear
 };
 
 
-const ITEM_ICON_SRC = '/list-item-icon.png';
-
-const ItemIcon: React.FC = () => (
-    <img
-        src={ITEM_ICON_SRC}
-        alt="List item icon"
-        className="h-8 w-8 mr-4 flex-shrink-0"
-        draggable={false}
-    />
+const ClipboardIcon: React.FC<{ onClick: () => void; label: string; showCopied: boolean }> = ({ onClick, label, showCopied }) => (
+    <button
+        type="button"
+        onClick={onClick}
+        aria-label={label}
+        className="relative mr-4 flex-shrink-0 rounded-lg p-1 transition-colors hover:bg-orange-50 focus:outline-none focus:ring-2 focus:ring-orange-500"
+    >
+        <svg className="h-8 w-8" viewBox="0 0 64 64" role="img" aria-hidden="true">
+            <title>{label}</title>
+            <rect x="10" y="8" width="30" height="40" rx="4" fill="#EA580C" />
+            <rect x="18" y="4" width="14" height="8" rx="3" fill="#0F172A" />
+            <rect x="26" y="18" width="28" height="40" rx="4" fill="#0B1120" />
+            <path d="M54 38a12 12 0 0 1-12 12V26a12 12 0 0 1 12 12Z" fill="#EA580C" />
+            <path d="M42 26c4.418 0 8 3.582 8 8v10" stroke="#EA580C" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+        {showCopied && (
+            <span className="absolute -bottom-1 left-1/2 translate-y-full -translate-x-1/2 rounded bg-green-600 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow">
+                Copied
+            </span>
+        )}
+    </button>
 );
 
-const ItemDetails: React.FC<{ item: ListItem }> = ({ item }) => {
+const ItemDetails: React.FC<{ item: ListItem; onCopy: () => void; isCopied: boolean }> = ({ item, onCopy, isCopied }) => {
+    const label =
+        item.item_type === 'equipment'
+            ? `Copy ${item.equipment?.make || ''} ${item.equipment?.model || ''} details`
+            : `Copy part ${item.parts?.part_number || ''} details`;
+
     if (item.item_type === 'equipment' && item.equipment) {
         return (
             <>
-                <ItemIcon />
+                <ClipboardIcon onClick={onCopy} label={label.trim() || 'Copy equipment details'} showCopied={isCopied} />
                 <div className="flex-grow">
                     <p className="font-semibold text-gray-900">{item.equipment.make} {item.equipment.model}</p>
                     <p className="text-sm text-gray-500">Stock #: {item.equipment.stock_number}</p>
@@ -147,7 +164,7 @@ const ItemDetails: React.FC<{ item: ListItem }> = ({ item }) => {
     if (item.item_type === 'part' && item.parts) {
         return (
             <>
-                <ItemIcon />
+                <ClipboardIcon onClick={onCopy} label={label.trim() || 'Copy part details'} showCopied={isCopied} />
                 <div className="flex-grow">
                     <p className="font-semibold text-gray-900">{item.parts.part_number}</p>
                     <p className="text-sm text-gray-500">Bin: {item.parts.bin_location}</p>
@@ -156,7 +173,17 @@ const ItemDetails: React.FC<{ item: ListItem }> = ({ item }) => {
         );
     }
     
-    return null;
+    return (
+        <>
+            <ClipboardIcon onClick={onCopy} label="Copy item details" showCopied={isCopied} />
+            <div className="flex-grow">
+                <p className="font-semibold text-gray-900 capitalize">{item.item_type}</p>
+                {item.quantity !== undefined && (
+                    <p className="text-sm text-gray-500">Quantity: {item.quantity}</p>
+                )}
+            </div>
+        </>
+    );
 };
 
 
@@ -172,6 +199,8 @@ export const ListDetailPage: React.FC = () => {
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [addSuccess, setAddSuccess] = useState<string | null>(null);
+  const [copiedItemId, setCopiedItemId] = useState<number | null>(null);
+  const copyResetTimeout = useRef<number | null>(null);
 
   // State for quantity editing
   const [isQtyKeypadOpen, setIsQtyKeypadOpen] = useState(false);
@@ -184,10 +213,83 @@ export const ListDetailPage: React.FC = () => {
     if (listId) fetchItems(listId);
   }, [listId, fetchItems]);
 
+  useEffect(() => {
+    return () => {
+      if (copyResetTimeout.current !== null) {
+        window.clearTimeout(copyResetTimeout.current);
+      }
+    };
+  }, []);
+
   const handleDeleteItem = (itemId: number) => {
     deleteItem(itemId);
   };
-  
+
+  const buildItemSummary = (item: ListItem): string => {
+    if (item.item_type === 'equipment' && item.equipment) {
+      const equipment = item.equipment;
+      const lines = [
+        'Type: Equipment',
+        [equipment.make, equipment.model].filter(Boolean).length
+          ? `Equipment: ${[equipment.make, equipment.model].filter(Boolean).join(' ')}`
+          : null,
+        equipment.stock_number ? `Stock #: ${equipment.stock_number}` : null,
+        equipment.serial_number ? `Serial #: ${equipment.serial_number}` : null,
+        equipment.customer_number ? `Customer #: ${equipment.customer_number}` : null,
+        item.quantity !== undefined ? `Quantity: ${item.quantity}` : null,
+        item.notes ? `Notes: ${item.notes}` : null,
+      ];
+      return lines.filter(Boolean).join('\n');
+    }
+
+    if (item.item_type === 'part' && item.parts) {
+      const part = item.parts;
+      const lines = [
+        'Type: Part',
+        part.part_number ? `Part #: ${part.part_number}` : null,
+        part.bin_location ? `Bin Location: ${part.bin_location}` : null,
+        item.quantity !== undefined ? `Quantity: ${item.quantity}` : null,
+        item.notes ? `Notes: ${item.notes}` : null,
+      ];
+      return lines.filter(Boolean).join('\n');
+    }
+
+    const fallbackLines = [
+      `Type: ${item.item_type}`,
+      item.quantity !== undefined ? `Quantity: ${item.quantity}` : null,
+      item.notes ? `Notes: ${item.notes}` : null,
+    ];
+    return fallbackLines.filter(Boolean).join('\n');
+  };
+
+  const handleCopyItemDetails = async (item: ListItem) => {
+    const summary = buildItemSummary(item);
+    if (!summary) return;
+
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(summary);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = summary;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+
+      setCopiedItemId(item.id);
+      if (copyResetTimeout.current !== null) {
+        window.clearTimeout(copyResetTimeout.current);
+      }
+      copyResetTimeout.current = window.setTimeout(() => setCopiedItemId(null), 2000);
+    } catch (error) {
+      console.error('Failed to copy item details', error);
+    }
+  };
+
   const handleExportCSV = () => {
     if (!currentList || items.length === 0) return;
     const csvData = generateCSV(currentList, items);
@@ -286,7 +388,11 @@ export const ListDetailPage: React.FC = () => {
               {items.map((item) => (
                 <li key={item.id} className="p-4 flex items-center justify-between">
                   <div className="flex items-center flex-grow">
-                    <ItemDetails item={item} />
+                    <ItemDetails
+                        item={item}
+                        onCopy={() => handleCopyItemDetails(item)}
+                        isCopied={copiedItemId === item.id}
+                    />
                   </div>
                   <div className="flex items-center space-x-2 ml-4">
                     <div className="flex items-center space-x-2">
