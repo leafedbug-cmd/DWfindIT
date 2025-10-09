@@ -4,10 +4,10 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Header } from '../components/Header';
 import { BottomNav } from '../components/BottomNav';
 import { useListStore } from '../store/listStore';
-import { useListItemStore, ListItem, Part, Equipment } from '../store/listItemStore';
+import { useListItemStore, ListItem } from '../store/listItemStore';
 import { supabase } from '../services/supabaseClient';
 import { useStore } from '../contexts/StoreContext';
-import { Trash2, Plus, Package, FileText, FileSpreadsheet, Search, Minus } from 'lucide-react';
+import { Trash2, Plus, FileText, FileSpreadsheet, Search } from 'lucide-react';
 import { generateCSV, generatePDF } from '../utils/export';
 
 // --- Numeric Keypad Component (for Quantity) ---
@@ -120,11 +120,22 @@ const SearchKeypad = ({ onSearch, onCancel, isSearching, searchError }: { onSear
 };
 
 
+const ITEM_ICON_SRC = '/list-item-icon.png';
+
+const ItemIcon: React.FC = () => (
+    <img
+        src={ITEM_ICON_SRC}
+        alt="List item icon"
+        className="h-8 w-8 mr-4 flex-shrink-0"
+        draggable={false}
+    />
+);
+
 const ItemDetails: React.FC<{ item: ListItem }> = ({ item }) => {
     if (item.item_type === 'equipment' && item.equipment) {
         return (
             <>
-                <Package className="h-8 w-8 text-blue-500 mr-4 flex-shrink-0" />
+                <ItemIcon />
                 <div className="flex-grow">
                     <p className="font-semibold text-gray-900">{item.equipment.make} {item.equipment.model}</p>
                     <p className="text-sm text-gray-500">Stock #: {item.equipment.stock_number}</p>
@@ -136,7 +147,7 @@ const ItemDetails: React.FC<{ item: ListItem }> = ({ item }) => {
     if (item.item_type === 'part' && item.parts) {
         return (
             <>
-                <img src="/COPYiconFINDitAPP.PNG" alt="Part Icon" className="h-8 w-8 mr-4 flex-shrink-0" />
+                <ItemIcon />
                 <div className="flex-grow">
                     <p className="font-semibold text-gray-900">{item.parts.part_number}</p>
                     <p className="text-sm text-gray-500">Bin: {item.parts.bin_location}</p>

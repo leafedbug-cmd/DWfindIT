@@ -92,20 +92,35 @@ export const WorkOrdersPage: React.FC = () => {
 
     try {
       setSaving(true);
-      
+
       const signatureImage = sigPad.current?.toDataURL();
+      const equipmentSnapshot = {
+        manufacturer: equipmentForm.manufacturer.trim(),
+        model: equipmentForm.model.trim(),
+        serial: equipmentForm.serial.trim() || equipmentForm.scannedData?.serial_number || "",
+        stock: equipmentForm.stock.trim() || equipmentForm.scannedData?.stock_number || "",
+        hourmeter: equipmentForm.hourmeter.trim(),
+      };
+      const equipmentSummary = [equipmentSnapshot.manufacturer, equipmentSnapshot.model].filter(Boolean).join(" ").trim();
+      const workOrderLabel = equipmentSummary || "Equipment";
+
+      const trimmedCustomerNumber = customerNumber.trim();
+      const trimmedContactName = contactName.trim();
+      const trimmedContactPhone = contactPhone.trim();
+      const trimmedJobLocation = jobLocation.trim();
+      const trimmedInstructions = instructions.trim();
 
       const workOrderData = {
         user_id: user.id,
-        equipment_stock_number: equipmentForm.scannedData?.stock_number || null,
-        customer_number: customerNumber || null,
+        equipment_stock_number: equipmentForm.scannedData?.stock_number || equipmentSnapshot.stock || null,
+        customer_number: trimmedCustomerNumber || null,
         store_location: selectedStore,
-        description: `Work order for ${equipmentForm.manufacturer} ${equipmentForm.model}`,
+        description: `Work order for ${workOrderLabel}`,
         status: "Open",
-        contact_name: contactName || null,
-        contact_phone: contactPhone || null,
-        job_location: jobLocation || null,
-        instructions: instructions || null,
+        contact_name: trimmedContactName || null,
+        contact_phone: trimmedContactPhone || null,
+        job_location: trimmedJobLocation || null,
+        instructions: trimmedInstructions || null,
         winterization_required: winterizationRequired,
         signature: signatureImage,
       };
@@ -114,12 +129,25 @@ export const WorkOrdersPage: React.FC = () => {
 
       if (error || !savedData) throw error || new Error("Failed to get response after saving.");
 
-      const fullDataForPdf = { ...savedData, ...workOrderData };
-      generateWorkOrderPDF(fullDataForPdf, equipmentForm);
+      const pdfWorkOrderData = {
+        id: savedData.id,
+        created_at: savedData.created_at,
+        customer_number: trimmedCustomerNumber,
+        contact_name: trimmedContactName,
+        contact_phone: trimmedContactPhone,
+        job_location: trimmedJobLocation,
+        instructions: trimmedInstructions,
+        winterization_required: winterizationRequired,
+        store_location: selectedStore ?? "",
+        signature: signatureImage,
+      };
+
+      generateWorkOrderPDF(pdfWorkOrderData, equipmentSnapshot);
       setOk("Work order saved and PDF downloaded!");
       
-      const subject = `New Work Order for ${equipmentForm.manufacturer} ${equipmentForm.model}`;
-      const body = `A new work order has been created for ${equipmentForm.manufacturer} ${equipmentForm.model} (Stock: ${equipmentForm.stock}).\n\nPlease find the PDF (downloaded to your device) and attach it to this email.`;
+      const stockLabel = equipmentSnapshot.stock || "Manual Entry";
+      const subject = `New Work Order for ${workOrderLabel}`;
+      const body = `A new work order has been created for ${workOrderLabel} (Stock: ${stockLabel}).\n\nPlease find the PDF (downloaded to your device) and attach it to this email.`;
       window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 
       resetAllFields();
