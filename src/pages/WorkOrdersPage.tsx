@@ -94,21 +94,29 @@ export const WorkOrdersPage: React.FC = () => {
       setSaving(true);
 
       const signatureImage = sigPad.current?.toDataURL();
+
+      const normalize = (value: unknown): string => {
+        if (value === null || value === undefined) return "";
+        return String(value).trim();
+      };
+
+      const scanned = equipmentForm.scannedData ?? {};
+
       const equipmentSnapshot = {
-        manufacturer: equipmentForm.manufacturer.trim(),
-        model: equipmentForm.model.trim(),
-        serial: equipmentForm.serial.trim() || equipmentForm.scannedData?.serial_number || "",
-        stock: equipmentForm.stock.trim() || equipmentForm.scannedData?.stock_number || "",
-        hourmeter: equipmentForm.hourmeter.trim(),
+        manufacturer: normalize(equipmentForm.manufacturer) || normalize(scanned.make),
+        model: normalize(equipmentForm.model) || normalize(scanned.model),
+        serial: normalize(equipmentForm.serial) || normalize(scanned.serial_number),
+        stock: normalize(equipmentForm.stock) || normalize(scanned.stock_number),
+        hourmeter: normalize(equipmentForm.hourmeter) || normalize(scanned.hour_meter) || normalize(scanned.hours),
       };
       const equipmentSummary = [equipmentSnapshot.manufacturer, equipmentSnapshot.model].filter(Boolean).join(" ").trim();
       const workOrderLabel = equipmentSummary || "Equipment";
 
-      const trimmedCustomerNumber = customerNumber.trim();
-      const trimmedContactName = contactName.trim();
-      const trimmedContactPhone = contactPhone.trim();
-      const trimmedJobLocation = jobLocation.trim();
-      const trimmedInstructions = instructions.trim();
+      const trimmedCustomerNumber = normalize(customerNumber);
+      const trimmedContactName = normalize(contactName);
+      const trimmedContactPhone = normalize(contactPhone);
+      const trimmedJobLocation = normalize(jobLocation);
+      const trimmedInstructions = normalize(instructions);
 
       const workOrderData = {
         user_id: user.id,

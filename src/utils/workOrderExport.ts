@@ -31,7 +31,7 @@ export function generateWorkOrderPDF(workOrderData: any, equipmentData: any) {
 
   autoTable(doc, {
     startY: 40,
-    head: [['Equipment Details']],
+    head: [['Equipment Details', '']],
     body: [
       ['Manufacturer', formatValue(equipmentData.manufacturer)],
       ['Model', formatValue(equipmentData.model)],
@@ -40,12 +40,16 @@ export function generateWorkOrderPDF(workOrderData: any, equipmentData: any) {
       ['Hourmeter', formatValue(equipmentData.hourmeter)],
     ],
     theme: 'plain',
-    headStyles: { fillColor: DITCH_WITCH_ORANGE, textColor: 255, fontStyle: 'bold' },
+    headStyles: { fillColor: DITCH_WITCH_ORANGE, textColor: 255, fontStyle: 'bold', halign: 'left' },
+    columnStyles: {
+      0: { fontStyle: 'bold', textColor: 50 },
+      1: { textColor: 30 },
+    },
   });
 
   autoTable(doc, {
     startY: (doc as any).lastAutoTable.finalY + 10,
-    head: [['Job & Customer Details']],
+    head: [['Job & Customer Details', '']],
     body: [
       ['Customer #', formatValue(workOrderData.customer_number)],
       ['Contact Name', formatValue(workOrderData.contact_name)],
@@ -54,7 +58,11 @@ export function generateWorkOrderPDF(workOrderData: any, equipmentData: any) {
       ['Job Location', formatValue(workOrderData.job_location)],
     ],
     theme: 'plain',
-    headStyles: { fillColor: DITCH_WITCH_ORANGE, textColor: 255, fontStyle: 'bold' },
+    headStyles: { fillColor: DITCH_WITCH_ORANGE, textColor: 255, fontStyle: 'bold', halign: 'left' },
+    columnStyles: {
+      0: { fontStyle: 'bold', textColor: 50 },
+      1: { textColor: 30 },
+    },
   });
   
   autoTable(doc, {
