@@ -48,6 +48,7 @@ interface ListItemState {
   fetchItems: (listId: string) => Promise<void>;
   addItem: (item: any) => Promise<ListItem | null>; // Using `any` for flexibility
   deleteItem: (id: number) => Promise<void>;
+  updateItemQuantity: (id: number, quantity: number) => Promise<void>;
 }
 
 export const useListItemStore = create<ListItemState>((set) => ({
@@ -106,6 +107,29 @@ export const useListItemStore = create<ListItemState>((set) => ({
       set((state) => ({ items: state.items.filter((item) => item.id !== id) }));
     } catch (err: any) {
       console.error('Error deleting item:', err);
+    }
+  },
+
+  updateItemQuantity: async (id: number, quantity: number) => {
+    try {
+      const { data, error } = await supabase
+        .from('list_items')
+        .update({ quantity })
+        .eq('id', id)
+        .select(`
+          *,
+          parts ( part_number, bin_location ),
+          equipment ( * )
+        `)
+        .single();
+
+      if (error || !data) throw error || new Error('No data returned');
+
+      set((state) => ({
+        items: state.items.map((item) => (item.id === id ? data : item)),
+      }));
+    } catch (err: any) {
+      console.error('Error updating item quantity:', err);
     }
   },
 }));
