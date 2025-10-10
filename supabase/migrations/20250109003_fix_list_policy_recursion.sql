@@ -44,6 +44,10 @@ $$;
 
 DROP POLICY IF EXISTS "Owners manage lists" ON public.lists;
 DROP POLICY IF EXISTS "Shared users read lists" ON public.lists;
+DROP POLICY IF EXISTS "Lists readable by access" ON public.lists;
+DROP POLICY IF EXISTS "Owners update lists" ON public.lists;
+DROP POLICY IF EXISTS "Owners delete lists" ON public.lists;
+DROP POLICY IF EXISTS "Owners insert lists" ON public.lists;
 
 -- Allow anyone with access (owner/editor/viewer) to read list metadata
 CREATE POLICY "Lists readable by access"
@@ -79,6 +83,8 @@ CREATE POLICY "Owners insert lists"
 
 DROP POLICY IF EXISTS "List owners manage shares" ON public.list_shares;
 DROP POLICY IF EXISTS "Share recipients can read" ON public.list_shares;
+DROP POLICY IF EXISTS "Owners manage shares" ON public.list_shares;
+DROP POLICY IF EXISTS "Recipients read shares" ON public.list_shares;
 
 CREATE POLICY "Owners manage shares"
   ON public.list_shares
@@ -102,6 +108,10 @@ DROP POLICY IF EXISTS "Shared users read items" ON public.list_items;
 DROP POLICY IF EXISTS "Shared editors insert items" ON public.list_items;
 DROP POLICY IF EXISTS "Shared editors update items" ON public.list_items;
 DROP POLICY IF EXISTS "Shared editors delete items" ON public.list_items;
+DROP POLICY IF EXISTS "Owners manage items" ON public.list_items;
+DROP POLICY IF EXISTS "Editors insert items" ON public.list_items;
+DROP POLICY IF EXISTS "Editors update items" ON public.list_items;
+DROP POLICY IF EXISTS "Editors delete items" ON public.list_items;
 
 -- Owners have full control
 CREATE POLICY "Owners manage items"

@@ -1,0 +1,18 @@
+\n\n-- Create equipment table if it doesn't exist\nDO $$ BEGIN\n  CREATE TABLE IF NOT EXISTS equipment (\n    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),\n    stock_number text UNIQUE NOT NULL,\n    serial_number text UNIQUE NOT NULL,\n    customer_number text,\n    customer text,\n    model text,\n    make text,\n    created_at timestamptz DEFAULT now(),\n    updated_at timestamptz DEFAULT now()\n  );
+\nEXCEPTION\n  WHEN duplicate_table THEN\n    NULL;
+\nEND $$;
+\n\n-- Create indexes for frequently queried columns\nCREATE INDEX IF NOT EXISTS equipment_customer_number_idx ON equipment(customer_number);
+\nCREATE INDEX IF NOT EXISTS equipment_model_idx ON equipment(model);
+\nCREATE INDEX IF NOT EXISTS equipment_make_idx ON equipment(make);
+\n\n-- Enable Row Level Security if not already enabled\nALTER TABLE equipment ENABLE ROW LEVEL SECURITY;
+\n\n-- Drop existing policy if it exists and create new one\nDO $$ BEGIN\n  DROP POLICY IF EXISTS "Allow public read access to equipment" ON equipment;
+\n  CREATE POLICY "Allow public read access to equipment"\n    ON equipment\n    FOR SELECT\n    TO public\n    USING (true);
+\nEXCEPTION\n  WHEN undefined_object THEN\n    NULL;
+\nEND $$;
+\n\n-- Create or replace function to update timestamp\nCREATE OR REPLACE FUNCTION update_updated_at_column()\nRETURNS TRIGGER AS $$\nBEGIN\n  NEW.updated_at = CURRENT_TIMESTAMP;
+\n  RETURN NEW;
+\nEND;
+\n$$ language 'plpgsql';
+\n\n-- Drop existing trigger if it exists and create new one\nDROP TRIGGER IF EXISTS update_equipment_updated_at ON equipment;
+\nCREATE TRIGGER update_equipment_updated_at\n  BEFORE UPDATE ON equipment\n  FOR EACH ROW\n  EXECUTE FUNCTION update_updated_at_column();
+;

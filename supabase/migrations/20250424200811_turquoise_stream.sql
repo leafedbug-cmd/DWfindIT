@@ -1,0 +1,13 @@
+\n\n-- Create lists table\nCREATE TABLE IF NOT EXISTS lists (\n  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),\n  name text NOT NULL,\n  is_current boolean DEFAULT false,\n  created_at timestamptz DEFAULT now(),\n  updated_at timestamptz DEFAULT now()\n);
+\n\n-- Create list_items table\nCREATE TABLE IF NOT EXISTS list_items (\n  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),\n  list_id uuid REFERENCES lists(id) ON DELETE CASCADE,\n  part_number text REFERENCES parts(part_number) ON DELETE CASCADE,\n  quantity integer DEFAULT 1,\n  bin_location text,\n  timestamp timestamptz DEFAULT now()\n);
+\n\n-- Enable RLS\nALTER TABLE lists ENABLE ROW LEVEL SECURITY;
+\nALTER TABLE list_items ENABLE ROW LEVEL SECURITY;
+\n\n-- Add policies\nCREATE POLICY "Allow public access to lists"\n  ON lists\n  FOR ALL\n  TO public\n  USING (true)\n  WITH CHECK (true);
+\n\nCREATE POLICY "Allow public access to list_items"\n  ON list_items\n  FOR ALL\n  TO public\n  USING (true)\n  WITH CHECK (true);
+\n\n-- Add trigger to ensure only one current list\nCREATE OR REPLACE FUNCTION update_current_list()\nRETURNS TRIGGER AS $$\nBEGIN\n  IF NEW.is_current THEN\n    UPDATE lists SET is_current = false WHERE id != NEW.id;
+\n  END IF;
+\n  RETURN NEW;
+\nEND;
+\n$$ LANGUAGE plpgsql;
+\n\nCREATE TRIGGER ensure_single_current_list\n  BEFORE INSERT OR UPDATE OF is_current ON lists\n  FOR EACH ROW\n  WHEN (NEW.is_current = true)\n  EXECUTE FUNCTION update_current_list();
+;
