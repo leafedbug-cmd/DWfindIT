@@ -55,15 +55,15 @@ export const ManagerPage: React.FC = () => {
   }, [lists]);
 
   return (
-    <div className="min-h-screen flex flex-col pb-16 bg-gray-50">
+    <div className="min-h-screen flex flex-col pb-16 bg-gray-50 dark:bg-slate-900 text-gray-900 dark:text-gray-100">
       <Header title="Manager" showBackButton />
       <main className="flex-1 p-4 space-y-4">
-        <div className="rounded-lg bg-white border border-gray-200 p-4">
-          <p className="text-sm text-gray-600">Store: <span className="font-medium">{selectedStore}</span></p>
+        <div className="rounded-lg bg-white border border-gray-200 p-4 dark:bg-slate-800 dark:border-slate-700">
+          <p className="text-sm text-gray-600 dark:text-gray-300">Store: <span className="font-medium text-gray-900 dark:text-gray-100">{selectedStore}</span></p>
         </div>
 
-        {loading && <div className="p-4 bg-blue-50 text-blue-700 rounded">Loading…</div>}
-        {err && <div className="p-4 bg-red-100 text-red-700 rounded">{err}</div>}
+        {loading && <div className="p-4 bg-blue-50 text-blue-700 rounded dark:bg-blue-900/40 dark:text-blue-200">Loading…</div>}
+        {err && <div className="p-4 bg-red-100 text-red-700 rounded dark:bg-red-900/40 dark:text-red-200">{err}</div>}
 
         {!loading && !err && (
           <div className="space-y-3">
@@ -72,21 +72,21 @@ export const ManagerPage: React.FC = () => {
               const title = p?.full_name || p?.email || userId;
               const open = userId === expanded;
               return (
-                <div key={userId} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-                  <button onClick={() => setExpanded(open ? null : userId)} className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50">
+                <div key={userId} className="bg-white border border-gray-200 rounded-xl overflow-hidden dark:bg-slate-800 dark:border-slate-700">
+                  <button onClick={() => setExpanded(open ? null : userId)} className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 dark:hover:bg-slate-700/60">
                     <div>
-                      <div className="font-semibold text-gray-900">{title}</div>
-                      <div className="text-xs text-gray-500">{userLists.length} list{userLists.length !== 1 ? 's' : ''} in {selectedStore}{p?.role ? ` • role: ${p.role}` : ''}</div>
+                      <div className="font-semibold text-gray-900 dark:text-gray-100">{title}</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-300">{userLists.length} list{userLists.length !== 1 ? 's' : ''} in {selectedStore}{p?.role ? ` • role: ${p.role}` : ''}</div>
                     </div>
                     <ChevronRight className={`h-4 w-4 transition-transform ${open ? 'rotate-90' : ''}`} />
                   </button>
                   {open && (
-                    <div className="border-t border-gray-200 divide-y">
+                    <div className="border-t border-gray-200 divide-y dark:border-slate-700 dark:divide-slate-700">
                       {userLists.map(l => (
                         <div key={l.id} className="flex items-center justify-between px-4 py-3">
                           <div>
-                            <div className="text-sm font-medium">{l.name}</div>
-                            <div className="text-xs text-gray-500">Updated {l.updated_at ? new Date(l.updated_at).toLocaleString() : '—'}</div>
+                            <div className="text-sm font-medium text-gray-900 dark:text-gray-100">{l.name}</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-300">Updated {l.updated_at ? new Date(l.updated_at).toLocaleString() : '—'}</div>
                           </div>
                           <a href={`/list/${l.id}`} className="text-orange-600 text-sm font-medium hover:underline">View</a>
                         </div>
@@ -96,7 +96,7 @@ export const ManagerPage: React.FC = () => {
                 </div>
               );
             })}
-            {grouped.size === 0 && <div className="p-4 text-gray-600 bg-white border border-gray-200 rounded-lg">No employee lists found for this store.</div>}
+            {grouped.size === 0 && <div className="p-4 text-gray-600 bg-white border border-gray-200 rounded-lg dark:text-gray-300 dark:bg-slate-800 dark:border-slate-700">No employee lists found for this store.</div>}
           </div>
         )}
       </main>

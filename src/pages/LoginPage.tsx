@@ -27,36 +27,36 @@ export const LoginPage: React.FC = () => {
   };
   
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col justify-center p-4">
+    <div className="min-h-screen bg-gray-50 dark:bg-slate-900 flex flex-col justify-center p-4 text-gray-900 dark:text-gray-100">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="text-center mb-8">
           <div className="bg-orange-600 mx-auto h-16 w-16 flex items-center justify-center rounded-full shadow-md mb-4">
             <ScanLine className="h-8 w-8 text-white" />
           </div>
-          <h2 className="text-2xl font-bold text-gray-900">Inventory Scanner</h2>
-          <p className="mt-2 text-gray-600">
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Inventory Scanner</h2>
+          <p className="mt-2 text-gray-600 dark:text-gray-300">
             {isSignUp ? 'Create an account to get started' : 'Sign in to your account'}
           </p>
         </div>
         
-        <div className="bg-white py-8 px-4 shadow-md sm:rounded-lg sm:px-10">
+        <div className="bg-white py-8 px-4 shadow-md sm:rounded-lg sm:px-10 dark:bg-slate-800">
           {error && (
-            <div className="mb-4 bg-red-50 p-4 rounded-md">
+            <div className="mb-4 bg-red-50 p-4 rounded-md dark:bg-red-900/40">
               <div className="flex">
                 <AlertCircle className="h-5 w-5 text-red-600 mr-2" />
-                <p className="text-sm text-red-700">{error}</p>
+                <p className="text-sm text-red-700 dark:text-red-200">{error}</p>
               </div>
             </div>
           )}
           
           <form className="space-y-6" onSubmit={handleSubmit}>
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700 dark:text-gray-200">
                 Email address
               </label>
               <div className="mt-1 relative rounded-md shadow-sm">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Mail className="h-5 w-5 text-gray-400" />
+                  <Mail className="h-5 w-5 text-gray-400 dark:text-gray-300" />
                 </div>
                 <input
                   id="email"
@@ -66,19 +66,19 @@ export const LoginPage: React.FC = () => {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="block w-full pl-10 py-3 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:ring-orange-500 focus:border-orange-500 sm:text-sm"
+                  className="block w-full pl-10 py-3 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:ring-orange-500 focus:border-orange-500 sm:text-sm dark:bg-slate-900 dark:border-slate-700 dark:text-gray-100"
                   placeholder="Email address"
                 />
               </div>
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700 dark:text-gray-200">
                 Password
               </label>
               <div className="mt-1 relative rounded-md shadow-sm">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Lock className="h-5 w-5 text-gray-400" />
+                  <Lock className="h-5 w-5 text-gray-400 dark:text-gray-300" />
                 </div>
                 <input
                   id="password"
@@ -88,7 +88,7 @@ export const LoginPage: React.FC = () => {
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="block w-full pl-10 py-3 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:ring-orange-500 focus:border-orange-500 sm:text-sm"
+                  className="block w-full pl-10 py-3 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:ring-orange-500 focus:border-orange-500 sm:text-sm dark:bg-slate-900 dark:border-slate-700 dark:text-gray-100"
                   placeholder="Password"
                   minLength={6}
                 />
@@ -121,24 +121,24 @@ export const LoginPage: React.FC = () => {
           <div className="mt-6">
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-300"></div>
+                <div className="w-full border-t border-gray-300 dark:border-slate-700"></div>
               </div>
               <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-white text-gray-500">
-                  {isSignUp ? 'Already have an account?' : 'Don\'t have an account?'}
+                <span className="px-2 bg-white text-gray-500 dark:bg-slate-800 dark:text-gray-300">
+                  {isSignUp ? 'Already have an account?' : "Don't have an account?"}
                 </span>
               </div>
             </div>
+          </div>
 
-            <div className="mt-6">
-              <button
-                type="button"
-                onClick={() => setIsSignUp(!isSignUp)}
-                className="w-full inline-flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500"
-              >
-                {isSignUp ? 'Sign in instead' : 'Create a new account'}
-              </button>
-            </div>
+          <div className="mt-6">
+            <button
+              type="button"
+              onClick={() => setIsSignUp(!isSignUp)}
+              className="w-full inline-flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 dark:bg-slate-900 dark:text-gray-100 dark:border-slate-700 dark:hover:bg-slate-800"
+            >
+              {isSignUp ? 'Sign in instead' : 'Create a new account'}
+            </button>
           </div>
         </div>
       </div>

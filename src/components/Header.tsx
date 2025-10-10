@@ -36,18 +36,18 @@ export const Header: React.FC<HeaderProps> = ({
   };
   
   return (
-    <header className="bg-white border-b border-gray-200 shadow-sm">
+    <header className="bg-white border-b border-gray-200 shadow-sm dark:bg-slate-900 dark:border-slate-800">
       <div className="px-4 py-3 flex items-center justify-between">
         <div className="flex items-center">
           {showBackButton && (
             <button
               onClick={goBack}
-              className="mr-3 p-1 rounded-full hover:bg-gray-100"
+              className="mr-3 p-1 rounded-full hover:bg-gray-100 dark:hover:bg-slate-800"
             >
-              <ArrowLeft className="h-5 w-5 text-gray-600" />
+              <ArrowLeft className="h-5 w-5 text-gray-600 dark:text-gray-300" />
             </button>
           )}
-          <h1 className="text-xl font-semibold text-gray-900">{title}</h1>
+          <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">{title}</h1>
         </div>
         
         <div className="flex items-center">
@@ -55,20 +55,20 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="relative">
               <button
                 onClick={() => setShowMenu(!showMenu)}
-                className="p-2 rounded-full hover:bg-gray-100"
+                className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-slate-800"
               >
-                <MoreVertical className="h-5 w-5 text-gray-600" />
+                <MoreVertical className="h-5 w-5 text-gray-600 dark:text-gray-300" />
               </button>
               
               {showMenu && (
                 <div 
-                  className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10"
+                  className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10 dark:bg-slate-800 dark:ring-slate-700"
                   onClick={() => setShowMenu(false)}
                 >
                   <div className="py-1" role="menu" aria-orientation="vertical">
                     <button
                       onClick={handleSignOut}
-                      className="flex items-center w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                      className="flex items-center w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-slate-700"
                       role="menuitem"
                     >
                       <LogOut className="h-4 w-4 mr-2" />

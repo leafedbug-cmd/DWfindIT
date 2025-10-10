@@ -34,8 +34,8 @@ const Keypad = ({ initialValue, onDone, onCancel }: { initialValue: number, onDo
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-xs">
-                <div className="text-right text-4xl font-semibold bg-gray-100 rounded-lg p-3 mb-4 break-all text-gray-900">
+            <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-xs dark:bg-slate-900">
+                <div className="text-right text-4xl font-semibold bg-gray-100 rounded-lg p-3 mb-4 break-all text-gray-900 dark:bg-slate-800 dark:text-gray-100">
                     {inputValue}
                 </div>
                 <div className="grid grid-cols-3 gap-3">
@@ -43,14 +43,14 @@ const Keypad = ({ initialValue, onDone, onCancel }: { initialValue: number, onDo
                         if (key === '') return <div key={index}></div>;
                         const action = key === '⌫' ? handleBackspace : () => handleButtonClick(key);
                         return (
-                            <button key={index} onClick={action} className="text-2xl h-16 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors focus:outline-none focus:ring-2 focus:ring-orange-500">
+                            <button key={index} onClick={action} className="text-2xl h-16 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors focus:outline-none focus:ring-2 focus:ring-orange-500 dark:bg-slate-700 dark:text-gray-100 dark:hover:bg-slate-600">
                                 {key}
                             </button>
                         );
                     })}
                 </div>
                 <div className="grid grid-cols-2 gap-3 mt-4">
-                    <button onClick={onCancel} className="text-lg py-3 font-semibold bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400 transition-colors">
+                    <button onClick={onCancel} className="text-lg py-3 font-semibold bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400 transition-colors dark:bg-slate-700 dark:text-gray-100 dark:hover:bg-slate-600">
                         Cancel
                     </button>
                     <button onClick={handleDone} className="text-lg py-3 font-semibold bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors">
@@ -90,24 +90,24 @@ const SearchKeypad = ({ onSearch, onCancel, isSearching, searchError }: { onSear
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-xs">
-                <h3 className="text-lg font-semibold text-center text-gray-800 mb-2">Manual Search & Add</h3>
-                <div className="text-right text-3xl font-semibold bg-gray-100 rounded-lg p-3 mb-4 break-all text-gray-900 min-h-[52px]">
-                    {inputValue || <span className="text-gray-400">Enter value...</span>}
+            <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-xs dark:bg-slate-900">
+                <h3 className="text-lg font-semibold text-center text-gray-800 mb-2 dark:text-gray-100">Manual Search & Add</h3>
+                <div className="text-right text-3xl font-semibold bg-gray-100 rounded-lg p-3 mb-4 break-all text-gray-900 min-h-[52px] dark:bg-slate-800 dark:text-gray-100">
+                    {inputValue || <span className="text-gray-400 dark:text-gray-500">Enter value...</span>}
                 </div>
-                {searchError && <p className="text-red-500 text-sm text-center mb-2">{searchError}</p>}
+                {searchError && <p className="text-red-500 text-sm text-center mb-2 dark:text-red-300">{searchError}</p>}
                 <div className="grid grid-cols-3 gap-3">
                     {keyLayout.flat().map((key, index) => {
                         const action = key === '⌫' ? handleBackspace : () => handleButtonClick(key);
                         return (
-                            <button key={index} onClick={action} className="text-2xl h-14 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors focus:outline-none focus:ring-2 focus:ring-orange-500">
+                            <button key={index} onClick={action} className="text-2xl h-14 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors focus:outline-none focus:ring-2 focus:ring-orange-500 dark:bg-slate-700 dark:text-gray-100 dark:hover:bg-slate-600">
                                 {key}
                             </button>
                         );
                     })}
                 </div>
                 <div className="grid grid-cols-2 gap-3 mt-4">
-                    <button onClick={onCancel} className="text-lg py-3 font-semibold bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400 transition-colors">
+                    <button onClick={onCancel} className="text-lg py-3 font-semibold bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400 transition-colors dark:bg-slate-700 dark:text-gray-100 dark:hover:bg-slate-600">
                         Cancel
                     </button>
                     <button onClick={handleSearch} disabled={isSearching || !inputValue} className="text-lg py-3 font-semibold bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors disabled:bg-gray-400">
@@ -125,7 +125,7 @@ const ClipboardIcon: React.FC<{ onClick: () => void; label: string; showCopied: 
         type="button"
         onClick={onClick}
         aria-label={label}
-        className="relative mr-4 flex-shrink-0 rounded-lg p-1 transition-colors hover:bg-orange-50 focus:outline-none focus:ring-2 focus:ring-orange-500"
+        className="relative mr-4 flex-shrink-0 rounded-lg p-1 transition-colors hover:bg-orange-50 focus:outline-none focus:ring-2 focus:ring-orange-500 dark:hover:bg-orange-500/20"
     >
         <svg className="h-8 w-8" viewBox="0 0 64 64" role="img" aria-hidden="true">
             <title>{label}</title>
@@ -154,8 +154,8 @@ const ItemDetails: React.FC<{ item: ListItem; onCopy: () => void; isCopied: bool
             <>
                 <ClipboardIcon onClick={onCopy} label={label.trim() || 'Copy equipment details'} showCopied={isCopied} />
                 <div className="flex-grow">
-                    <p className="font-semibold text-gray-900">{item.equipment.make} {item.equipment.model}</p>
-                    <p className="text-sm text-gray-500">Stock #: {item.equipment.stock_number}</p>
+                    <p className="font-semibold text-gray-900 dark:text-gray-100">{item.equipment.make} {item.equipment.model}</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-300">Stock #: {item.equipment.stock_number}</p>
                 </div>
             </>
         );
@@ -166,8 +166,8 @@ const ItemDetails: React.FC<{ item: ListItem; onCopy: () => void; isCopied: bool
             <>
                 <ClipboardIcon onClick={onCopy} label={label.trim() || 'Copy part details'} showCopied={isCopied} />
                 <div className="flex-grow">
-                    <p className="font-semibold text-gray-900">{item.parts.part_number}</p>
-                    <p className="text-sm text-gray-500">Bin: {item.parts.bin_location}</p>
+                    <p className="font-semibold text-gray-900 dark:text-gray-100">{item.parts.part_number}</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-300">Bin: {item.parts.bin_location}</p>
                 </div>
             </>
         );
@@ -177,9 +177,9 @@ const ItemDetails: React.FC<{ item: ListItem; onCopy: () => void; isCopied: bool
         <>
             <ClipboardIcon onClick={onCopy} label="Copy item details" showCopied={isCopied} />
             <div className="flex-grow">
-                <p className="font-semibold text-gray-900 capitalize">{item.item_type}</p>
+                <p className="font-semibold text-gray-900 dark:text-gray-100 capitalize">{item.item_type}</p>
                 {item.quantity !== undefined && (
-                    <p className="text-sm text-gray-500">Quantity: {item.quantity}</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-300">Quantity: {item.quantity}</p>
                 )}
             </div>
         </>
@@ -354,19 +354,19 @@ export const ListDetailPage: React.FC = () => {
 
   if (!currentList) {
     return (
-      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center">
+      <div className="min-h-screen bg-gray-50 dark:bg-slate-900 flex flex-col items-center justify-center text-gray-900 dark:text-gray-100">
         <p>Loading list...</p>
-        <button onClick={() => navigate('/lists')} className="mt-4 text-orange-600">Go Back to Lists</button>
+        <button onClick={() => navigate('/lists')} className="mt-4 text-orange-600 dark:text-orange-400">Go Back to Lists</button>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col pb-32">
+    <div className="min-h-screen bg-gray-50 dark:bg-slate-900 flex flex-col pb-32 text-gray-900 dark:text-gray-100">
       <Header title={currentList.name} showBackButton />
 
       <main className="flex-1 p-4 space-y-4">
-        <div className="bg-white p-3 rounded-lg shadow-sm border border-gray-200 grid grid-cols-1 gap-3">
+        <div className="bg-white p-3 rounded-lg shadow-sm border border-gray-200 grid grid-cols-1 gap-3 dark:bg-slate-800 dark:border-slate-700">
             <div className="grid grid-cols-2 gap-3">
                 <button onClick={handleExportPDF} disabled={items.length === 0} className="flex items-center justify-center gap-2 text-sm bg-red-600 text-white px-4 py-2 rounded-lg shadow-sm hover:bg-red-700 disabled:bg-gray-400">
                     <FileText size={16} /> Export PDF
@@ -380,11 +380,11 @@ export const ListDetailPage: React.FC = () => {
             </button>
         </div>
 
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-          {isLoading ? ( <div className="p-6 text-center">Loading items...</div> ) : 
-           error ? ( <div className="p-6 text-center text-red-500">Error: {error}</div> ) : 
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 dark:bg-slate-800 dark:border-slate-700">
+          {isLoading ? ( <div className="p-6 text-center text-gray-600 dark:text-gray-300">Loading items...</div> ) : 
+           error ? ( <div className="p-6 text-center text-red-500 dark:text-red-300">Error: {error}</div> ) : 
            items.length > 0 ? (
-            <ul className="divide-y divide-gray-200">
+            <ul className="divide-y divide-gray-200 dark:divide-slate-700">
               {items.map((item) => (
                 <li key={item.id} className="p-4 flex items-center justify-between">
                   <div className="flex items-center flex-grow">
@@ -396,13 +396,13 @@ export const ListDetailPage: React.FC = () => {
                   </div>
                   <div className="flex items-center space-x-2 ml-4">
                     <div className="flex items-center space-x-2">
-                        <button onClick={() => handleUpdateQuantity(item.id, item.quantity - 1)} disabled={item.quantity <= 0} className="bg-gray-200 text-gray-700 rounded-full w-7 h-7 font-bold text-lg disabled:opacity-50">-</button>
-                        <div onClick={() => { setEditingItem(item); setIsQtyKeypadOpen(true); }} className="text-gray-900 text-lg font-semibold w-10 text-center cursor-pointer rounded-md hover:bg-gray-100 p-1">
+                        <button onClick={() => handleUpdateQuantity(item.id, item.quantity - 1)} disabled={item.quantity <= 0} className="bg-gray-200 text-gray-700 rounded-full w-7 h-7 font-bold text-lg disabled:opacity-50 dark:bg-slate-700 dark:text-gray-100">-</button>
+                        <div onClick={() => { setEditingItem(item); setIsQtyKeypadOpen(true); }} className="text-gray-900 text-lg font-semibold w-10 text-center cursor-pointer rounded-md hover:bg-gray-100 p-1 dark:text-gray-100 dark:hover:bg-slate-700/60">
                             {item.quantity}
                         </div>
-                        <button onClick={() => handleUpdateQuantity(item.id, item.quantity + 1)} className="bg-gray-200 text-gray-700 rounded-full w-7 h-7 font-bold text-lg">+</button>
+                        <button onClick={() => handleUpdateQuantity(item.id, item.quantity + 1)} className="bg-gray-200 text-gray-700 rounded-full w-7 h-7 font-bold text-lg dark:bg-slate-700 dark:text-gray-100">+</button>
                     </div>
-                    <button onClick={() => handleDeleteItem(item.id)} className="p-2 text-red-500 hover:bg-red-50 rounded-full">
+                    <button onClick={() => handleDeleteItem(item.id)} className="p-2 text-red-500 hover:bg-red-50 rounded-full dark:hover:bg-red-500/10">
                         <Trash2 className="h-5 w-5" />
                     </button>
                   </div>
@@ -411,13 +411,13 @@ export const ListDetailPage: React.FC = () => {
             </ul>
           ) : (
             <div className="p-6 text-center">
-              <p className="text-gray-500">This list is empty. Add an item to get started.</p>
+              <p className="text-gray-500 dark:text-gray-300">This list is empty. Add an item to get started.</p>
             </div>
           )}
         </div>
       </main>
 
-      {addSuccess && ( <div className="fixed bottom-32 left-1/2 -translate-x-1/2 bg-green-100 text-green-800 px-4 py-2 rounded-lg shadow-lg text-sm z-20">{addSuccess}</div> )}
+      {addSuccess && ( <div className="fixed bottom-32 left-1/2 -translate-x-1/2 bg-green-100 text-green-800 px-4 py-2 rounded-lg shadow-lg text-sm z-20 dark:bg-green-900/50 dark:text-green-200">{addSuccess}</div> )}
       
       {isSearchOpen && ( <SearchKeypad onSearch={handleManualSearchAndAdd} onCancel={() => setIsSearchOpen(false)} isSearching={isSearching} searchError={searchError}/> )}
 
@@ -425,7 +425,7 @@ export const ListDetailPage: React.FC = () => {
           <Keypad initialValue={editingItem.quantity} onDone={handleKeypadDone} onCancel={() => setIsQtyKeypadOpen(false)} />
       )}
 
-      <div className="fixed bottom-16 left-0 right-0 p-4 bg-white/80 backdrop-blur-sm border-t">
+      <div className="fixed bottom-16 left-0 right-0 p-4 bg-white/80 backdrop-blur-sm border-t dark:bg-slate-900/80 dark:border-slate-800">
         <button onClick={() => navigate(`/scan?list=${listId}`)} className="w-full bg-orange-600 text-white px-4 py-3 rounded-lg shadow-sm flex items-center justify-center font-medium">
             <Plus className="h-5 w-5 mr-2" /> Add Item via Scan
         </button>
@@ -435,4 +435,3 @@ export const ListDetailPage: React.FC = () => {
     </div>
   );
 };
-

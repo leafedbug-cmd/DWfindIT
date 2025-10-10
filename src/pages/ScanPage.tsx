@@ -1,13 +1,13 @@
 // src/pages/ScanPage.tsx
 import React, { useState, useCallback, useMemo } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { Header } from '../components/Header';
 import { BottomNav } from '../components/BottomNav';
 import { BarcodeScanner } from '../components/BarcodeScanner';
 import { useListItemStore, Part, Equipment } from '../store/listItemStore';
 import { supabase } from '../services/supabaseClient';
 import { useStore } from '../contexts/StoreContext';
-import { Plus, Minus, CheckCircle } from 'lucide-react';
+import { CheckCircle } from 'lucide-react';
 
 // --- Keypad Component ---
 // This component is self-contained and will be used by ScanPage.
@@ -34,8 +34,8 @@ const Keypad = ({ initialValue, onDone, onCancel }: { initialValue: number, onDo
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-xs">
-                <div className="text-right text-4xl font-semibold bg-gray-100 rounded-lg p-3 mb-4 break-all text-gray-900">
+            <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-xs dark:bg-slate-900">
+                <div className="text-right text-4xl font-semibold bg-gray-100 rounded-lg p-3 mb-4 break-all text-gray-900 dark:bg-slate-800 dark:text-gray-100">
                     {inputValue}
                 </div>
                 <div className="grid grid-cols-3 gap-3">
@@ -43,14 +43,14 @@ const Keypad = ({ initialValue, onDone, onCancel }: { initialValue: number, onDo
                         if (key === '') return <div key={index}></div>;
                         const action = key === '⌫' ? handleBackspace : () => handleButtonClick(key);
                         return (
-                            <button key={index} onClick={action} className="text-2xl h-16 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors focus:outline-none focus:ring-2 focus:ring-orange-500">
+                            <button key={index} onClick={action} className="text-2xl h-16 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors focus:outline-none focus:ring-2 focus:ring-orange-500 dark:bg-slate-700 dark:text-gray-100 dark:hover:bg-slate-600">
                                 {key}
                             </button>
                         );
                     })}
                 </div>
                 <div className="grid grid-cols-2 gap-3 mt-4">
-                    <button onClick={onCancel} className="text-lg py-3 font-semibold bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400 transition-colors">
+                    <button onClick={onCancel} className="text-lg py-3 font-semibold bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400 transition-colors dark:bg-slate-700 dark:text-gray-100 dark:hover:bg-slate-600">
                         Cancel
                     </button>
                     <button onClick={handleDone} className="text-lg py-3 font-semibold bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors">
@@ -66,7 +66,6 @@ const Keypad = ({ initialValue, onDone, onCancel }: { initialValue: number, onDo
 type ScanResultData = (Part & { type: 'part'; store_location?: string | null; }) | (Equipment & { type: 'equipment'; store_location?: string | null; });
 
 export const ScanPage: React.FC = () => {
-  const navigate = useNavigate();
   const location = useLocation();
   const { selectedStore } = useStore();
   const { addItem } = useListItemStore();
@@ -166,15 +165,15 @@ export const ScanPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col pb-16 bg-gray-50">
+    <div className="min-h-screen flex flex-col pb-16 bg-gray-50 dark:bg-slate-900 text-gray-900 dark:text-gray-100">
       <Header title={pageTitle} showBackButton />
       
       <main className="flex-1 p-4 space-y-4 relative">
         <BarcodeScanner onScanSuccess={handleScan} onScanError={setScanError} />
         
-        {isProcessing && <p className="text-center text-gray-500">Processing...</p>}
-        {scanError && <div className="p-2 bg-red-100 text-red-800 rounded">{scanError}</div>}
-        {scanSuccess && <div className="p-2 bg-green-100 text-green-800 rounded">{scanSuccess}</div>}
+        {isProcessing && <p className="text-center text-gray-500 dark:text-gray-300">Processing...</p>}
+        {scanError && <div className="p-2 bg-red-100 text-red-800 rounded dark:bg-red-900/40 dark:text-red-200">{scanError}</div>}
+        {scanSuccess && <div className="p-2 bg-green-100 text-green-800 rounded dark:bg-green-900/50 dark:text-green-200">{scanSuccess}</div>}
 
         {scanResult && (
           <div className="absolute bottom-4 left-4 right-4 bg-black/70 backdrop-blur-sm p-4 rounded-lg shadow-lg animate-fade-in-up">

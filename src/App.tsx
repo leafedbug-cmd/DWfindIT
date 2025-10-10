@@ -3,6 +3,7 @@ import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './store/authStore';
 import { StoreProvider } from './contexts/StoreContext';
+import { ThemeProvider } from './contexts/ThemeContext';
 import { LoginPage } from './pages/LoginPage';
 import { HomePage } from './pages/HomePage';
 import { ProfilePage } from './pages/ProfilePage';
@@ -39,77 +40,79 @@ function App() {
 
   return (
     <BrowserRouter>
-      <StoreProvider>
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
+      <ThemeProvider>
+        <StoreProvider>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
 
-          <Route
-            path="/"
-            element={
-              <ProtectedRoute>
-                <HomePage />
-              </ProtectedRoute>
-            }
-          />
-          
-          <Route
-            path="/profile"
-            element={
-              <ProtectedRoute>
-                <ProfilePage />
-              </ProtectedRoute>
-            }
-          />
+            <Route
+              path="/"
+              element={
+                <ProtectedRoute>
+                  <HomePage />
+                </ProtectedRoute>
+              }
+            />
+            
+            <Route
+              path="/profile"
+              element={
+                <ProtectedRoute>
+                  <ProfilePage />
+                </ProtectedRoute>
+              }
+            />
 
-          <Route
-            path="/lists"
-            element={
-              <ProtectedRoute>
-                <ListsPage />
-              </ProtectedRoute>
-            }
-          />
+            <Route
+              path="/lists"
+              element={
+                <ProtectedRoute>
+                  <ListsPage />
+                </ProtectedRoute>
+              }
+            />
 
-          <Route
-            path="/list/:id"
-            element={
-              <ProtectedRoute>
-                <ListDetailPage />
-              </ProtectedRoute>
-            }
-          />
+            <Route
+              path="/list/:id"
+              element={
+                <ProtectedRoute>
+                  <ListDetailPage />
+                </ProtectedRoute>
+              }
+            />
 
-          <Route
-            path="/scan"
-            element={
-              <ProtectedRoute>
-                <ScanPage />
-              </ProtectedRoute>
-            }
-          />
-          
-          <Route
-            path="/work-orders"
-            element={
-              <ProtectedRoute>
-                <WorkOrdersPage />
-              </ProtectedRoute>
-            }
-          />
+            <Route
+              path="/scan"
+              element={
+                <ProtectedRoute>
+                  <ScanPage />
+                </ProtectedRoute>
+              }
+            />
+            
+            <Route
+              path="/work-orders"
+              element={
+                <ProtectedRoute>
+                  <WorkOrdersPage />
+                </ProtectedRoute>
+              }
+            />
 
-          {/* ADDED: Route for the Inventory page */}
-          <Route
-            path="/inventory"
-            element={
-              <ProtectedRoute>
-                <InventoryPage />
-              </ProtectedRoute>
-            }
-          />
-          
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </StoreProvider>
+            {/* ADDED: Route for the Inventory page */}
+            <Route
+              path="/inventory"
+              element={
+                <ProtectedRoute>
+                  <InventoryPage />
+                </ProtectedRoute>
+              }
+            />
+            
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </StoreProvider>
+      </ThemeProvider>
     </BrowserRouter>
   );
 }
