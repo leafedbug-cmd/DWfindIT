@@ -182,7 +182,7 @@ export const WorkOrdersPage: React.FC = () => {
         signature: signatureImage,
       };
 
-      generateWorkOrderPDF(pdfWorkOrderData, equipmentSnapshot);
+      await generateWorkOrderPDF(pdfWorkOrderData, equipmentSnapshot);
       setOk("Work order saved and PDF downloaded!");
       
       const stockLabel = equipmentSnapshot.stock || "Manual Entry";

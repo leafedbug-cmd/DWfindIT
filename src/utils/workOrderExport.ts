@@ -1,10 +1,31 @@
 // src/utils/workOrderExport.ts
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
-
 const DITCH_WITCH_ORANGE = '#EA580C';
 
-export function generateWorkOrderPDF(workOrderData: any, equipmentData: any) {
+type PdfLibs = {
+  jsPDF: typeof import('jspdf')['default'];
+  autoTable: typeof import('jspdf-autotable')['default'];
+};
+
+let pdfLibsPromise: Promise<PdfLibs> | null = null;
+
+const loadPdfLibraries = () => {
+  if (!pdfLibsPromise) {
+    pdfLibsPromise = Promise.all([
+      import('jspdf'),
+      import('jspdf-autotable'),
+    ]).then(([jsPDFModule, autoTableModule]) => {
+      const jsPDF = jsPDFModule.default;
+      const autoTable =
+        (autoTableModule as { default?: typeof import('jspdf-autotable')['default'] }).default ??
+        (autoTableModule as typeof import('jspdf-autotable')['default']);
+      return { jsPDF, autoTable };
+    });
+  }
+  return pdfLibsPromise;
+};
+
+export async function generateWorkOrderPDF(workOrderData: any, equipmentData: any): Promise<void> {
+  const { jsPDF, autoTable } = await loadPdfLibraries();
   const doc = new jsPDF();
 
   const formatValue = (value: string | number | null | undefined) => {
@@ -64,7 +85,7 @@ export function generateWorkOrderPDF(workOrderData: any, equipmentData: any) {
       1: { textColor: 30 },
     },
   });
-  
+
   autoTable(doc, {
     startY: (doc as any).lastAutoTable.finalY + 10,
     head: [['Instructions']],
@@ -72,24 +93,26 @@ export function generateWorkOrderPDF(workOrderData: any, equipmentData: any) {
     theme: 'plain',
     headStyles: { fillColor: DITCH_WITCH_ORANGE, textColor: 255, fontStyle: 'bold' },
   });
-  
-  // ADDED: Winterization section for the PDF
+
   autoTable(doc, {
     startY: (doc as any).lastAutoTable.finalY + 10,
     head: [['Winterization Required?*']],
     body: [
       [`${workOrderData.winterization_required ? 'YES' : 'NO'}`],
-      [{
-          content: `*If machine is marked as winterized above, Ditch Witch of Arkansas will not be responsible for any damage to machine from freezing. If Ditch Witch Of Arkansas is required to winterize machine an extra charge will be applied to Work Order.`,
-          styles: { fontSize: 8, textColor: 100 }
-      }]
+      [
+        {
+          content:
+            '*If machine is marked as winterized above, Ditch Witch of Arkansas will not be responsible for any damage to machine from freezing. If Ditch Witch Of Arkansas is required to winterize machine an extra charge will be applied to Work Order.',
+          styles: { fontSize: 8, textColor: 100 },
+        },
+      ],
     ],
     theme: 'plain',
     headStyles: { fillColor: DITCH_WITCH_ORANGE, textColor: 255, fontStyle: 'bold' },
   });
 
   const pageCount = doc.getNumberOfPages();
-  for (let i = 1; i <= pageCount; i++) {
+  for (let i = 1; i <= pageCount; i += 1) {
     doc.setPage(i);
     doc.setFontSize(10);
     doc.text(`Page ${i} of ${pageCount}`, 14, doc.internal.pageSize.height - 10);

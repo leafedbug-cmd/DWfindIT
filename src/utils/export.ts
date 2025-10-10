@@ -1,54 +1,67 @@
 // src/utils/export.ts
-import jsPDF from 'jspdf';
-// CHANGED: Import autoTable separately
-import autoTable from 'jspdf-autotable';
-import { ListItem } from '../store/listItemStore';
-import { ListWithCount } from '../store/listStore';
+import type { ListItem } from '../store/listItemStore';
+import type { ListWithCount } from '../store/listStore';
 
 const DITCH_WITCH_ORANGE = '#EA580C'; // Ditch Witch brand orange for theme
+
+type PdfLibs = {
+  jsPDF: typeof import('jspdf')['default'];
+  autoTable: typeof import('jspdf-autotable')['default'];
+};
+
+let pdfLibsPromise: Promise<PdfLibs> | null = null;
+
+const loadPdfLibraries = () => {
+  if (!pdfLibsPromise) {
+    pdfLibsPromise = Promise.all([
+      import('jspdf'),
+      import('jspdf-autotable'),
+    ]).then(([jsPDFModule, autoTableModule]) => {
+      const jsPDF = jsPDFModule.default;
+      const autoTable =
+        (autoTableModule as { default?: typeof import('jspdf-autotable')['default'] }).default ??
+        (autoTableModule as typeof import('jspdf-autotable')['default']);
+      return { jsPDF, autoTable };
+    });
+  }
+  return pdfLibsPromise;
+};
 
 // --- CSV Generation (No changes needed here) ---
 export function generateCSV(list: ListWithCount, items: ListItem[]): string {
   const headers = ['Type', 'Identifier', 'Details', 'Quantity'];
-  const rows = items.map(item => {
+  const rows = items.map((item) => {
     if (item.item_type === 'equipment' && item.equipment) {
       const { make, model, stock_number, serial_number } = item.equipment;
       return [
         'Equipment',
-        `"${stock_number}"`, // Enclose in quotes to handle potential commas
+        `"${stock_number}"`,
         `"${make || ''} ${model || ''} (S/N: ${serial_number || 'N/A'})"`,
-        item.quantity
+        item.quantity,
       ];
     }
     if (item.item_type === 'part' && item.parts) {
       const { part_number, bin_location } = item.parts;
-      return [
-        'Part',
-        `"${part_number}"`,
-        `"Bin: ${bin_location || 'N/A'}"`,
-        item.quantity
-      ];
+      return ['Part', `"${part_number}"`, `"Bin: ${bin_location || 'N/A'}"`, item.quantity];
     }
     return ['Unknown', '', '', item.quantity];
   });
 
-  const csvContent = [
-    headers.join(','),
-    ...rows.map(row => row.join(','))
-  ].join('\n');
+  const csvContent = [headers.join(','), ...rows.map((row) => row.join(','))].join('\n');
 
   return csvContent;
 }
 
 // --- PDF Generation ---
-export function generatePDF(list: ListWithCount, items: ListItem[]): void {
+export async function generatePDF(list: ListWithCount, items: ListItem[]): Promise<void> {
+  const { jsPDF, autoTable } = await loadPdfLibraries();
   const doc = new jsPDF();
-  
+
   // Header
   doc.setFontSize(22);
   doc.setTextColor(DITCH_WITCH_ORANGE);
   doc.text('Ditch Witch Inventory List', 14, 22);
-  
+
   // List Details
   doc.setFontSize(12);
   doc.setTextColor(40);
@@ -56,31 +69,25 @@ export function generatePDF(list: ListWithCount, items: ListItem[]): void {
   doc.text(`Date Created: ${new Date(list.created_at).toLocaleDateString()}`, 14, 38);
 
   // Table
-  const tableColumn = ["Type", "Identifier", "Details", "Qty"];
+  const tableColumn = ['Type', 'Identifier', 'Details', 'Qty'];
   const tableRows: (string | number)[][] = [];
 
-  items.forEach(item => {
+  items.forEach((item) => {
     if (item.item_type === 'equipment' && item.equipment) {
       const { make, model, stock_number, serial_number } = item.equipment;
       tableRows.push([
         'Equipment',
         stock_number,
         `${make || ''} ${model || ''} (S/N: ${serial_number || 'N/A'})`,
-        item.quantity
+        item.quantity,
       ]);
     }
     if (item.item_type === 'part' && item.parts) {
       const { part_number, bin_location } = item.parts;
-      tableRows.push([
-        'Part',
-        part_number,
-        `Bin: ${bin_location || 'N/A'}`,
-        item.quantity
-      ]);
+      tableRows.push(['Part', part_number, `Bin: ${bin_location || 'N/A'}`, item.quantity]);
     }
   });
 
-  // CHANGED: Use the imported autoTable function directly on the doc object
   autoTable(doc, {
     startY: 50,
     head: [tableColumn],
@@ -94,10 +101,16 @@ export function generatePDF(list: ListWithCount, items: ListItem[]): void {
     didDrawPage: (data) => {
       // Footer
       const pageCount = doc.getNumberOfPages();
-      doc.text(`Page ${data.pageNumber} of ${pageCount}`, data.settings.margin.left, doc.internal.pageSize.height - 10);
-    }
+      doc.text(
+        `Page ${data.pageNumber} of ${pageCount}`,
+        data.settings.margin.left,
+        doc.internal.pageSize.height - 10,
+      );
+    },
   });
 
-  const fileName = `${list.name.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0,10)}.pdf`;
+  const fileName = `${list.name.replace(/\s+/g, '_')}_${new Date()
+    .toISOString()
+    .slice(0, 10)}.pdf`;
   doc.save(fileName);
 }

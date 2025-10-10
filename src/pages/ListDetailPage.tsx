@@ -496,9 +496,9 @@ export const ListDetailPage: React.FC = () => {
     URL.revokeObjectURL(link.href);
   };
 
-  const handleExportPDF = () => {
+  const handleExportPDF = async () => {
     if (!currentList || items.length === 0) return;
-    generatePDF(currentList, items);
+    await generatePDF(currentList, items);
   };
   
   const handleUpdateQuantity = async (itemId: number, newQuantity: number) => {
