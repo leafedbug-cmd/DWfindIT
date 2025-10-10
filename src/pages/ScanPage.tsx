@@ -1,5 +1,5 @@
 // src/pages/ScanPage.tsx
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Header } from '../components/Header';
 import { BottomNav } from '../components/BottomNav';
@@ -7,6 +7,8 @@ import { BarcodeScanner } from '../components/BarcodeScanner';
 import { useListItemStore, Part, Equipment } from '../store/listItemStore';
 import { supabase } from '../services/supabaseClient';
 import { useStore } from '../contexts/StoreContext';
+import { useListStore } from '../store/listStore';
+import { useAuthStore } from '../store/authStore';
 import { CheckCircle } from 'lucide-react';
 
 // --- Keypad Component ---
@@ -69,6 +71,8 @@ export const ScanPage: React.FC = () => {
   const location = useLocation();
   const { selectedStore } = useStore();
   const { addItem } = useListItemStore();
+  const { lists, fetchLists } = useListStore();
+  const user = useAuthStore((state) => state.user);
 
   const [scanError, setScanError] = useState<string | null>(null);
   const [scanSuccess, setScanSuccess] = useState<string | null>(null);
@@ -82,10 +86,29 @@ export const ScanPage: React.FC = () => {
     return searchParams.get('list');
   }, [location.search]);
 
+  useEffect(() => {
+    if (listId && !lists.find((list) => list.id === listId)) {
+      fetchLists().catch(() => {});
+    }
+  }, [listId, lists, fetchLists]);
+
+  const targetList = useMemo(
+    () => (listId ? lists.find((list) => list.id === listId) : null),
+    [listId, lists]
+  );
+
+  const isOwner = targetList?.user_id && targetList.user_id === user?.id;
+  const canEditList = !listId || isOwner || targetList?.sharedRole === 'editor';
+  const isViewOnlyList = !!listId && !canEditList;
+
   const pageTitle = listId ? "Add Item to List" : "Scan & View";
 
   const handleScan = useCallback(async (barcode: string) => {
     if (isProcessing) return;
+    if (listId && !canEditList) {
+      setScanError('You only have view access to this list.');
+      return;
+    }
 
     setIsProcessing(true);
     setScanError(null);
@@ -127,10 +150,14 @@ export const ScanPage: React.FC = () => {
     } finally {
       setIsProcessing(false);
     }
-  }, [isProcessing, listId, selectedStore]);
+  }, [isProcessing, listId, selectedStore, canEditList]);
 
   const handleAddItemToList = async () => {
     if (!scanResult || !listId || quantity <= 0) return;
+    if (!canEditList) {
+      setScanError('You only have view access to this list.');
+      return;
+    }
 
     setIsProcessing(true);
     setScanError(null);
@@ -169,6 +196,11 @@ export const ScanPage: React.FC = () => {
       <Header title={pageTitle} showBackButton />
       
       <main className="flex-1 p-4 space-y-4 relative">
+        {isViewOnlyList && (
+          <div className="rounded-lg border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-700 dark:border-yellow-500/30 dark:bg-yellow-500/10 dark:text-yellow-200">
+            You have view-only access to this list. Contact the owner to request edit permissions.
+          </div>
+        )}
         <BarcodeScanner onScanSuccess={handleScan} onScanError={setScanError} />
         
         {isProcessing && <p className="text-center text-gray-500 dark:text-gray-300">Processing...</p>}

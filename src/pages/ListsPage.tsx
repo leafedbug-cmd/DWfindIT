@@ -60,31 +60,43 @@ export const ListsPage: React.FC = () => {
           {error && <p className="text-center text-red-500 dark:text-red-300">Error: {error}</p>}
           {!isLoading && lists.length === 0 && <p className="text-center text-gray-500 dark:text-gray-300">You don't have any lists yet. Create one above to get started.</p>}
           
-          {lists.map((list: ListWithCount) => (
-            <div key={list.id} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden dark:bg-slate-800 dark:border-slate-700">
-              <div
-                className="p-4 flex items-center cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/60"
-                onClick={() => navigate(`/list/${list.id}`)}
-              >
-                <ClipboardList className="h-8 w-8 text-orange-500 dark:text-orange-400 mr-4" />
-                <div className="flex-grow">
-                  <p className="font-semibold text-gray-900 dark:text-gray-100">{list.name}</p>
-                  <p className="text-sm text-gray-500 dark:text-gray-300">
-                    {list.item_count} {list.item_count === 1 ? 'item' : 'items'}
-                  </p>
-                </div>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation(); // Prevent navigating to the detail page
-                    handleDeleteList(list.id, list.name);
-                  }}
-                  className="p-2 text-red-500 hover:bg-red-50 rounded-full ml-2 dark:hover:bg-red-500/10"
+          {lists.map((list: ListWithCount) => {
+            const isOwner = !list.shared;
+            return (
+              <div key={list.id} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden dark:bg-slate-800 dark:border-slate-700">
+                <div
+                  className="p-4 flex items-center cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/60"
+                  onClick={() => navigate(`/list/${list.id}`)}
                 >
-                  <Trash2 className="h-5 w-5" />
-                </button>
+                  <ClipboardList className="h-8 w-8 text-orange-500 dark:text-orange-400 mr-4" />
+                  <div className="flex-grow">
+                    <div className="flex items-center gap-2">
+                      <p className="font-semibold text-gray-900 dark:text-gray-100">{list.name}</p>
+                      {list.shared && (
+                        <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-300">
+                          Shared with you{list.sharedRole ? ` · ${list.sharedRole}` : ''}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm text-gray-500 dark:text-gray-300">
+                      {list.item_count} {list.item_count === 1 ? 'item' : 'items'}
+                    </p>
+                  </div>
+                  {isOwner && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation(); // Prevent navigating to the detail page
+                        handleDeleteList(list.id, list.name);
+                      }}
+                      className="p-2 text-red-500 hover:bg-red-50 rounded-full ml-2 dark:hover:bg-red-500/10"
+                    >
+                      <Trash2 className="h-5 w-5" />
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </main>
 
