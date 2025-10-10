@@ -52,10 +52,12 @@ const EquipmentCard: React.FC<{ equipment: Equipment; onCopy: (text: string) => 
 
 export const InventoryPage: React.FC = () => {
   const { inventory, isLoading, error, searchInventory } = useInventoryStore();
-  const { selectedStore } = useStore();
+  const { selectedStore, isLoading: isStoreLoading } = useStore();
   const [searchTerm, setSearchTerm] = useState('');
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
   const [copySuccessMessage, setCopySuccessMessage] = useState('');
+  const inventoryTitle = selectedStore ? `Inventory: ${selectedStore}` : 'Inventory';
+  const isSearchDisabled = !selectedStore || isStoreLoading;
 
   useEffect(() => {
     if (debouncedSearchTerm && selectedStore) {
@@ -76,7 +78,7 @@ export const InventoryPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-slate-900 flex flex-col pb-16 text-gray-900 dark:text-gray-100">
-      <Header title={`Inventory: ${selectedStore}`} showBackButton />
+      <Header title={inventoryTitle} showBackButton />
 
       <main className="flex-1 p-4 space-y-4">
         {/* Search Bar */}
@@ -84,9 +86,10 @@ export const InventoryPage: React.FC = () => {
           <input
             type="text"
             placeholder="Search by part #, bin, stock #, or serial #..."
-            className="w-full pl-10 pr-4 py-2 border rounded-lg shadow-sm focus:ring-orange-500 focus:border-orange-500 dark:bg-slate-900 dark:border-slate-700 dark:text-gray-100"
+            className="w-full pl-10 pr-4 py-2 border rounded-lg shadow-sm focus:ring-orange-500 focus:border-orange-500 dark:bg-slate-900 dark:border-slate-700 dark:text-gray-100 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
+            disabled={isSearchDisabled}
           />
           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
             <Search className="h-5 w-5 text-gray-400 dark:text-gray-300" />
@@ -95,26 +98,40 @@ export const InventoryPage: React.FC = () => {
 
         {/* Content Area */}
         <div className="bg-white rounded-lg shadow-sm overflow-hidden dark:bg-slate-800">
-          {isLoading && <p className="p-4 text-center text-gray-500 dark:text-gray-300">Searching...</p>}
-          {error && <p className="p-4 text-center text-red-500 dark:text-red-300">Error: {error}</p>}
+          {isStoreLoading && !selectedStore && (
+            <p className="p-4 text-center text-gray-500 dark:text-gray-300">Loading store information...</p>
+          )}
 
-          {!isLoading && !error && (
-            <ul className="divide-y divide-gray-200 dark:divide-slate-700">
-              {inventory.length > 0 ? (
-                inventory.map(item => (
-                  <li key={`${item.type}-${item.id}`} className="p-4 flex items-center">
-                    {item.type === 'part' 
-                      ? <PartCard part={item as Part} onCopy={handleCopyToClipboard} /> 
-                      : <EquipmentCard equipment={item as Equipment} onCopy={handleCopyToClipboard} />
-                    }
-                  </li>
-                ))
-              ) : (
-                <p className="p-4 text-center text-gray-500 dark:text-gray-300">
-                  {searchTerm ? 'No results found.' : 'Enter a search term to begin.'}
-                </p>
+          {!isStoreLoading && !selectedStore && (
+            <p className="p-4 text-center text-gray-500 dark:text-gray-300">
+              Select a store from your profile to search inventory.
+            </p>
+          )}
+
+          {selectedStore && (
+            <>
+              {isLoading && <p className="p-4 text-center text-gray-500 dark:text-gray-300">Searching...</p>}
+              {error && <p className="p-4 text-center text-red-500 dark:text-red-300">Error: {error}</p>}
+
+              {!isLoading && !error && (
+                <ul className="divide-y divide-gray-200 dark:divide-slate-700">
+                  {inventory.length > 0 ? (
+                    inventory.map(item => (
+                      <li key={`${item.type}-${item.id}`} className="p-4 flex items-center">
+                        {item.type === 'part' 
+                          ? <PartCard part={item as Part} onCopy={handleCopyToClipboard} /> 
+                          : <EquipmentCard equipment={item as Equipment} onCopy={handleCopyToClipboard} />
+                        }
+                      </li>
+                    ))
+                  ) : (
+                    <p className="p-4 text-center text-gray-500 dark:text-gray-300">
+                      {searchTerm ? 'No results found.' : 'Enter a search term to begin.'}
+                    </p>
+                  )}
+                </ul>
               )}
-            </ul>
+            </>
           )}
         </div>
       </main>
