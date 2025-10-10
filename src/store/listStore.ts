@@ -80,7 +80,6 @@ export const useListStore = create<ListState>((set, get) => ({
             role
           )
         `)
-        .or(`user_id.eq.${user.id},list_shares.shared_with.eq.${user.id}`)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
