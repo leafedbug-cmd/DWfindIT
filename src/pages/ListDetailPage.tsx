@@ -190,7 +190,9 @@ const ItemDetails: React.FC<{ item: ListItem; onCopy: () => void; isCopied: bool
 type ShareProfileSummary = {
     id: string;
     employee_name: string | null;
+    email: string | null;
     store_location: string | null;
+    role?: string | null;
 };
 
 export const ListDetailPage: React.FC = () => {
@@ -252,15 +254,13 @@ export const ListDetailPage: React.FC = () => {
         }
 
         if (participantIds.size > 0) {
-          const { data, error } = await supabase
-            .from('profiles')
-            .select('id, employee_name, store_location')
-            .in('id', Array.from(participantIds));
-
+          const { data, error } = await supabase.rpc('get_profiles_by_ids', {
+            profile_ids: Array.from(participantIds),
+          });
           if (error) throw error;
 
           const profileMap: Record<string, ShareProfileSummary> = {};
-          (data || []).forEach((profile) => {
+          (data || []).forEach((profile: any) => {
             profileMap[profile.id] = profile as ShareProfileSummary;
           });
           setShareProfiles((prev) => ({ ...prev, ...profileMap }));
@@ -304,7 +304,7 @@ export const ListDetailPage: React.FC = () => {
   const resolveProfileName = (id: string | null | undefined) => {
     if (!id) return 'Unknown user';
     const profile = shareProfiles[id];
-    return profile?.employee_name || 'Unknown user';
+    return profile?.employee_name || profile?.email || 'Unknown user';
   };
 
   const resolveProfileStore = (id: string | null | undefined) => {
@@ -313,28 +313,31 @@ export const ListDetailPage: React.FC = () => {
     return profile?.store_location || null;
   };
 
+  const resolveProfileEmail = (id: string | null | undefined) => {
+    if (!id) return null;
+    return shareProfiles[id]?.email || null;
+  };
+
   const handleSearchProfiles = async (event?: React.FormEvent<HTMLFormElement>) => {
     if (event) event.preventDefault();
     const term = shareSearchTerm.trim();
     if (!term) {
       setShareResults([]);
-      setShareMessage('Enter a name to search.');
+      setShareMessage('Enter a name or email to search.');
       return;
     }
     setIsSearchingProfiles(true);
     setShareError(null);
     setShareMessage(null);
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('id, employee_name, store_location')
-        .ilike('employee_name', `%${term}%`)
-        .limit(10);
-
+      const { data, error } = await supabase.rpc('search_profiles_for_sharing', {
+        search_term: term,
+        limit_count: 10,
+      });
       if (error) throw error;
 
       const candidateMap: Record<string, ShareProfileSummary> = {};
-      (data || []).forEach((profile) => {
+      (data || []).forEach((profile: any) => {
         candidateMap[profile.id] = profile as ShareProfileSummary;
       });
       setShareProfiles((prev) => ({ ...prev, ...candidateMap }));
@@ -344,11 +347,13 @@ export const ListDetailPage: React.FC = () => {
         alreadySharedIds.add(currentUserId);
       }
 
-      const filtered = (data || []).filter((profile) => !alreadySharedIds.has(profile.id));
+      const filtered = (data || []).filter(
+        (profile: any) => profile?.id && !alreadySharedIds.has(profile.id)
+      ) as ShareProfileSummary[];
       if (!filtered || filtered.length === 0) {
         setShareMessage('No matching users found or they already have access.');
       }
-      setShareResults((filtered || []) as ShareProfileSummary[]);
+      setShareResults(filtered || []);
     } catch (err: any) {
       console.error('Profile search failed', err);
       setShareError(err.message);
@@ -382,15 +387,13 @@ export const ListDetailPage: React.FC = () => {
     const ownerId = currentList?.sharedBy;
     if (ownerId && !shareProfiles[ownerId]) {
       supabase
-        .from('profiles')
-        .select('id, employee_name, store_location')
-        .eq('id', ownerId)
-        .maybeSingle()
+        .rpc('get_profiles_by_ids', { profile_ids: [ownerId] })
         .then(({ data, error }) => {
-          if (!error && data) {
+          if (!error && data && data.length > 0) {
+            const profile = data[0] as ShareProfileSummary;
             setShareProfiles((prev) => ({
               ...prev,
-              [data.id]: data as ShareProfileSummary,
+              [profile.id]: profile,
             }));
           }
         })
@@ -694,7 +697,7 @@ export const ListDetailPage: React.FC = () => {
                     type="text"
                     value={shareSearchTerm}
                     onChange={(event) => setShareSearchTerm(event.target.value)}
-                    placeholder="Search by name..."
+                    placeholder="Search by name or email..."
                     className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500 dark:border-slate-700 dark:bg-slate-800 dark:text-gray-100 dark:focus:border-purple-400"
                   />
                   <div className="flex gap-2">
@@ -730,10 +733,13 @@ export const ListDetailPage: React.FC = () => {
                       <li key={profile.id} className="flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2 dark:border-slate-700">
                         <div>
                           <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                            {profile.employee_name || 'Unnamed user'}
+                            {profile.employee_name || profile.email || 'Unnamed user'}
                           </p>
                           <p className="text-xs text-gray-500 dark:text-gray-400">
-                            {profile.store_location || 'Store unknown'} · Role: {shareRole === 'editor' ? 'Editor' : 'Viewer'}
+                            {profile.email || 'Email unavailable'}
+                          </p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            {profile.store_location || 'Store unknown'} · Share as {shareRole === 'editor' ? 'Editor' : 'Viewer'}
                           </p>
                         </div>
                         <button
@@ -747,7 +753,7 @@ export const ListDetailPage: React.FC = () => {
                   </ul>
                 ) : (
                   <p className="text-sm text-gray-500 dark:text-gray-400">
-                    {shareSearchTerm ? 'No matching teammates found.' : 'Search by teammate name to share this list.'}
+                    {shareSearchTerm ? 'No matching teammates found.' : 'Search by teammate name or email to share this list.'}
                   </p>
                 )}
               </div>
@@ -763,6 +769,9 @@ export const ListDetailPage: React.FC = () => {
                         <div>
                           <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
                             {resolveProfileName(share.shared_with)}
+                          </p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            {resolveProfileEmail(share.shared_with) || 'Email unavailable'}
                           </p>
                           <p className="text-xs text-gray-500 dark:text-gray-400">
                             {resolveProfileStore(share.shared_with) || 'Store unknown'} · Role: {share.role === 'editor' ? 'Editor' : 'Viewer'}
