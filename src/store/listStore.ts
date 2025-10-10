@@ -99,7 +99,7 @@ export const useListStore = create<ListState>((set, get) => ({
           item_count: getNormalizedItemCount(list),
           shared: !isOwner && !!recipientShare,
           sharedRole: recipientShare?.role,
-          sharedBy: recipientShare?.shared_by ?? list.user_id ?? null,
+          sharedBy: isOwner ? null : recipientShare?.shared_by ?? list.user_id ?? null,
         });
       });
 
