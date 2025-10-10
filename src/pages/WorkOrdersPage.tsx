@@ -4,17 +4,41 @@ import { Header } from "../components/Header";
 import { BottomNav } from "../components/BottomNav";
 import { supabase } from "../services/supabaseClient";
 import { useAuthStore } from "../store/authStore";
-import { X, Scan, Save, Eraser, Wrench } from "lucide-react";
+import { X, Scan, Save, Eraser } from "lucide-react";
 import { BarcodeScanner } from "../components/BarcodeScanner";
 import { useStore } from "../contexts/StoreContext";
 import { useWorkOrderStore, WorkOrderWithEquipment } from "../store/workOrderStore";
 import { generateWorkOrderPDF } from "../utils/workOrderExport";
 import SignatureCanvas from 'react-signature-canvas';
 
+type EquipmentRow = {
+  id?: number;
+  make?: string | null;
+  model?: string | null;
+  serial_number?: string | null;
+  stock_number?: string | null;
+  hour_meter?: string | null;
+  hours?: string | null;
+  customer_number?: string | null;
+  store_location?: string | null;
+};
+
 type EquipmentFormState = {
   manufacturer: string; model: string; serial: string; stock: string; hourmeter: string;
-  scannedData: Record<string, any> | null;
+  scannedData: EquipmentRow | null;
 };
+
+const getErrorMessage = (error: unknown, fallback: string) => {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === 'object' && 'message' in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === 'string') return message;
+  }
+  return fallback;
+};
+
+const fetchEquipmentByField = (column: 'stock_number' | 'serial_number', value: string) =>
+  supabase.from<EquipmentRow>('equipment').select('*').eq(column, value).maybeSingle();
 
 export const WorkOrdersPage: React.FC = () => {
   const { user } = useAuthStore();
@@ -65,20 +89,28 @@ export const WorkOrdersPage: React.FC = () => {
   const handleScanSuccess = async (barcode: string) => {
     try {
       setErr(null);
-      let res = await supabase.from("equipment").select("*").eq("stock_number", barcode).maybeSingle();
-      if (!res.data) { res = await supabase.from("equipment").select("*").eq("serial_number", barcode).maybeSingle(); }
-      if (res.error) throw res.error;
-      if (!res.data) throw new Error(`No equipment found for code: ${barcode}. Please enter details manually.`);
+      let response = await fetchEquipmentByField('stock_number', barcode);
+      if (!response.data) {
+        response = await fetchEquipmentByField('serial_number', barcode);
+      }
+      if (response.error) throw response.error;
+      if (!response.data) {
+        throw new Error(`No equipment found for code: ${barcode}. Please enter details manually.`);
+      }
 
+      const equipment = response.data;
       setEquipmentForm({
-        manufacturer: res.data.make || "", model: res.data.model || "",
-        serial: res.data.serial_number || "", stock: res.data.stock_number || "",
-        hourmeter: res.data.hour_meter || res.data.hours || "", scannedData: res.data,
+        manufacturer: equipment.make ?? "",
+        model: equipment.model ?? "",
+        serial: equipment.serial_number ?? "",
+        stock: equipment.stock_number ?? "",
+        hourmeter: equipment.hour_meter ?? equipment.hours ?? "",
+        scannedData: equipment,
       });
-      setCustomerNumber(res.data.customer_number || "");
+      setCustomerNumber(equipment.customer_number ?? "");
       setIsScanning(false);
-    } catch (e: any) {
-      setErr(e?.message ?? "Lookup failed");
+    } catch (error) {
+      setErr(getErrorMessage(error, "Lookup failed"));
       setIsScanning(false);
     }
   };
@@ -161,8 +193,8 @@ export const WorkOrdersPage: React.FC = () => {
       resetAllFields();
       if (user) fetchWorkOrders(user.id);
 
-    } catch (e: any) {
-      setErr(e?.message ?? "Failed to save work order");
+    } catch (error) {
+      setErr(getErrorMessage(error, "Failed to save work order"));
     } finally {
       setSaving(false);
     }
