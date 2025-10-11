@@ -144,8 +144,9 @@ export const ScanPage: React.FC = () => {
         throw new Error(`No part or equipment found for barcode "${barcode}".`);
       }
 
-    } catch (error: any) {
-      setScanError(error.message);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
+      setScanError(errorMessage);
       setTimeout(() => setScanError(null), 3500);
     } finally {
       setIsProcessing(false);
@@ -171,8 +172,9 @@ export const ScanPage: React.FC = () => {
       
       setScanSuccess(`Added ${quantity} x item to list!`);
       setScanResult(null);
-    } catch (error: any) {
-      setScanError(error.message);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
+      setScanError(errorMessage);
     } finally {
       setIsProcessing(false);
       setTimeout(() => setScanError(null), 3500);
