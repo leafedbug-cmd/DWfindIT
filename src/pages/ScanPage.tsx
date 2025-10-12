@@ -1,5 +1,5 @@
 // src/pages/ScanPage.tsx
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, type FC } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Header } from '../components/Header';
 import { BottomNav } from '../components/BottomNav';
@@ -67,7 +67,7 @@ const Keypad = ({ initialValue, onDone, onCancel }: { initialValue: number, onDo
 
 type ScanResultData = (Part & { type: 'part'; store_location?: string | null; }) | (Equipment & { type: 'equipment'; store_location?: string | null; });
 
-export const ScanPage: React.FC = () => {
+export const ScanPage: FC = () => {
   const location = useLocation();
   const { selectedStore } = useStore();
   const { addItem } = useListItemStore();
