@@ -3,6 +3,7 @@ import React, { useEffect, useState, useRef } from "react";
 import { Header } from "../components/Header";
 import { BottomNav } from "../components/BottomNav";
 import { supabase } from "../services/supabaseClient";
+import type { Tables } from "../services/supabase";
 import { useAuthStore } from "../store/authStore";
 import { X, Scan, Save, Eraser } from "lucide-react";
 import { BarcodeScanner } from "../components/BarcodeScanner";
@@ -11,17 +12,7 @@ import { useWorkOrderStore, WorkOrderWithEquipment } from "../store/workOrderSto
 import { generateWorkOrderPDF } from "../utils/workOrderExport";
 import SignatureCanvas from 'react-signature-canvas';
 
-type EquipmentRow = {
-  id?: number;
-  make?: string | null;
-  model?: string | null;
-  serial_number?: string | null;
-  stock_number?: string | null;
-  hour_meter?: string | null;
-  hours?: string | null;
-  customer_number?: string | null;
-  store_location?: string | null;
-};
+type EquipmentRow = Tables<'equipment'>;
 
 type EquipmentFormState = {
   manufacturer: string; model: string; serial: string; stock: string; hourmeter: string;
@@ -37,8 +28,11 @@ const getErrorMessage = (error: unknown, fallback: string) => {
   return fallback;
 };
 
-const fetchEquipmentByField = (column: 'stock_number' | 'serial_number', value: string) =>
-  supabase.from<EquipmentRow>('equipment').select('*').eq(column, value).maybeSingle();
+const fetchEquipmentByStock = (value: string) =>
+  supabase.from('equipment').select('*').eq('stock_number', value).maybeSingle();
+
+const fetchEquipmentBySerial = (value: string) =>
+  supabase.from('equipment').select('*').eq('serial_number', value).maybeSingle();
 
 export const WorkOrdersPage: React.FC = () => {
   const { user } = useAuthStore();
@@ -89,9 +83,9 @@ export const WorkOrdersPage: React.FC = () => {
   const handleScanSuccess = async (barcode: string) => {
     try {
       setErr(null);
-      let response = await fetchEquipmentByField('stock_number', barcode);
+      let response = await fetchEquipmentByStock(barcode);
       if (!response.data) {
-        response = await fetchEquipmentByField('serial_number', barcode);
+        response = await fetchEquipmentBySerial(barcode);
       }
       if (response.error) throw response.error;
       if (!response.data) {
@@ -104,7 +98,8 @@ export const WorkOrdersPage: React.FC = () => {
         model: equipment.model ?? "",
         serial: equipment.serial_number ?? "",
         stock: equipment.stock_number ?? "",
-        hourmeter: equipment.hour_meter ?? equipment.hours ?? "",
+        // hour meter not present in current schema; leave empty for manual entry
+        hourmeter: "",
         scannedData: equipment,
       });
       setCustomerNumber(equipment.customer_number ?? "");
@@ -132,14 +127,15 @@ export const WorkOrdersPage: React.FC = () => {
         return String(value).trim();
       };
 
-      const scanned = equipmentForm.scannedData ?? {};
+  const scanned: Partial<EquipmentRow> = equipmentForm.scannedData ?? {};
 
       const equipmentSnapshot = {
         manufacturer: normalize(equipmentForm.manufacturer) || normalize(scanned.make),
         model: normalize(equipmentForm.model) || normalize(scanned.model),
         serial: normalize(equipmentForm.serial) || normalize(scanned.serial_number),
         stock: normalize(equipmentForm.stock) || normalize(scanned.stock_number),
-        hourmeter: normalize(equipmentForm.hourmeter) || normalize(scanned.hour_meter) || normalize(scanned.hours),
+  // hour meter not available on scanned record in current schema
+  hourmeter: normalize(equipmentForm.hourmeter),
       };
       const equipmentSummary = [equipmentSnapshot.manufacturer, equipmentSnapshot.model].filter(Boolean).join(" ").trim();
       const workOrderLabel = equipmentSummary || "Equipment";
@@ -165,7 +161,12 @@ export const WorkOrdersPage: React.FC = () => {
         signature: signatureImage,
       };
 
-      const { data: savedData, error } = await supabase.from("work_orders").insert(workOrderData).select().single();
+      const { data: savedData, error } = await supabase
+        .from("work_orders")
+        // Cast to any to align with runtime schema which includes additional fields
+        .insert(workOrderData as any)
+        .select()
+        .single();
 
       if (error || !savedData) throw error || new Error("Failed to get response after saving.");
 
