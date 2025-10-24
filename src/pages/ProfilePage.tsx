@@ -1,5 +1,5 @@
 // src/pages/ProfilePage.tsx
-import React, { useEffect, useState } from 'react';
+import React, { FormEvent, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Header } from '../components/Header';
 import { BottomNav } from '../components/BottomNav';
@@ -34,6 +34,13 @@ const ManagerSection: React.FC = () => {
 
   useEffect(() => {
     const fetchManagerData = async () => {
+      if (!selectedStore) {
+        setEmployees([]);
+        setEmployeeLists({});
+        setLoading(false);
+        return;
+      }
+
       setLoading(true);
       setError(null);
       try {
@@ -86,7 +93,10 @@ const ManagerSection: React.FC = () => {
     <div className="space-y-3">
       <div className="rounded-lg bg-white border border-gray-200 p-4 dark:bg-slate-800 dark:border-slate-700">
         <p className="text-sm text-gray-600 dark:text-gray-300">
-          Viewing employees and lists for store: <span className="font-medium text-gray-900 dark:text-gray-100">{selectedStore}</span>
+          Viewing employees and lists for store:{' '}
+          <span className="font-medium text-gray-900 dark:text-gray-100">
+            {selectedStore ?? 'Choose a store above'}
+          </span>
         </p>
       </div>
 
@@ -157,6 +167,12 @@ export const ProfilePage: React.FC = () => {
   const [role, setRole] = useState<string | null>(null);
   const [loadingRole, setLoadingRole] = useState(true);
   const { theme, toggleTheme } = useTheme();
+  const { selectedStore, setSelectedStore, isLoading: isStoreLoading } = useStore();
+  const [storeInput, setStoreInput] = useState('');
+  const [storeOptions, setStoreOptions] = useState<string[]>([]);
+  const [isLoadingStoreOptions, setIsLoadingStoreOptions] = useState(false);
+  const [storeMessage, setStoreMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [isSavingStore, setIsSavingStore] = useState(false);
   const isDarkMode = theme === 'dark';
 
   useEffect(() => {
@@ -184,6 +200,79 @@ export const ProfilePage: React.FC = () => {
   }, [user]);
 
   const isManager = role === 'manager';
+
+  useEffect(() => {
+    setStoreInput(selectedStore ?? '');
+  }, [selectedStore]);
+
+  useEffect(() => {
+    let isActive = true;
+    const loadStoreOptions = async () => {
+      setIsLoadingStoreOptions(true);
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('store_location')
+        .not('store_location', 'is', null);
+
+      if (!isActive) {
+        return;
+      }
+
+      if (!error && data) {
+        const uniqueStores = Array.from(
+          new Set(
+            data
+              .map((row) => row.store_location)
+              .filter((value): value is string => Boolean(value && value.trim()))
+              .map((value) => value.trim())
+          )
+        ).sort((a, b) => a.localeCompare(b));
+        setStoreOptions(uniqueStores);
+      }
+      setIsLoadingStoreOptions(false);
+    };
+
+    loadStoreOptions();
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  const handleStoreSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const trimmed = storeInput.trim();
+    if (!trimmed) {
+      setStoreMessage({ type: 'error', text: 'Please enter a store location.' });
+      return;
+    }
+
+    if (trimmed === (selectedStore ?? '')) {
+      setStoreMessage({ type: 'success', text: 'Store location is already set to that value.' });
+      return;
+    }
+
+    setStoreMessage(null);
+    setIsSavingStore(true);
+
+    const success = await setSelectedStore(trimmed);
+
+    setIsSavingStore(false);
+    if (success) {
+      setStoreMessage({ type: 'success', text: 'Store location updated.' });
+    } else {
+      setStoreMessage({
+        type: 'error',
+        text: 'We could not update your store location. Please try again.',
+      });
+    }
+  };
+
+  const handleStoreInputChange = (value: string) => {
+    setStoreInput(value);
+    if (storeMessage) {
+      setStoreMessage(null);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-slate-900 flex flex-col pb-16 text-gray-900 dark:text-gray-100">
@@ -219,6 +308,63 @@ export const ProfilePage: React.FC = () => {
               <Moon className={`h-4 w-4 ${isDarkMode ? 'text-orange-400' : 'text-gray-400'}`} />
             </div>
           </div>
+        </div>
+
+        <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-4 dark:bg-slate-800 dark:border-slate-700">
+          <div>
+            <div className="font-semibold text-gray-900 dark:text-gray-100 mb-1">Store Preference</div>
+            <p className="text-sm text-gray-600 dark:text-gray-300">
+              Set the store you&apos;re currently working out of. You can update this whenever you travel to a
+              different location.
+            </p>
+          </div>
+          <form className="space-y-3" onSubmit={handleStoreSubmit}>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <div className="flex-1">
+                <label htmlFor="store-location" className="sr-only">
+                  Store location
+                </label>
+                <input
+                  id="store-location"
+                  list="store-location-options"
+                  value={storeInput}
+                  onChange={(event) => handleStoreInputChange(event.target.value)}
+                  placeholder="Enter or select a store location"
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500 dark:border-slate-700 dark:bg-slate-900 dark:text-gray-100 dark:focus:border-orange-400 dark:focus:ring-orange-400"
+                  disabled={isStoreLoading || isSavingStore}
+                />
+                {storeOptions.length > 0 && (
+                  <datalist id="store-location-options">
+                    {storeOptions.map((option) => (
+                      <option key={option} value={option} />
+                    ))}
+                  </datalist>
+                )}
+              </div>
+              <button
+                type="submit"
+                className="inline-flex items-center justify-center rounded-md bg-orange-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-orange-700 disabled:cursor-not-allowed disabled:bg-gray-400 dark:disabled:bg-slate-600"
+                disabled={isStoreLoading || isSavingStore}
+              >
+                {isSavingStore ? 'Saving...' : 'Save Store'}
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Current store: {selectedStore ? selectedStore : 'Not set yet.'}
+              {isLoadingStoreOptions && ' (loading suggestions...)'}
+            </p>
+          </form>
+          {storeMessage && (
+            <div
+              className={`rounded-md border px-3 py-2 text-sm ${
+                storeMessage.type === 'success'
+                  ? 'border-green-200 bg-green-50 text-green-700 dark:border-green-500/30 dark:bg-green-900/20 dark:text-green-200'
+                  : 'border-red-200 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-900/20 dark:text-red-200'
+              }`}
+            >
+              {storeMessage.text}
+            </div>
+          )}
         </div>
 
         {isManager && (

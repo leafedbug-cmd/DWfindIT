@@ -5,7 +5,7 @@ import { useProfileStore } from '../store/profileStore';
 
 interface StoreContextType {
   selectedStore: string | null;
-  setSelectedStore: (store: string) => void;
+  setSelectedStore: (store: string) => Promise<boolean>;
   isLoading: boolean;
 }
 
@@ -31,11 +31,28 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [profile]);
 
   // Function to update the store both locally and in the database
-  const setSelectedStore = (store: string) => {
-    if (user) {
-      _setSelectedStore(store);
-      updateProfile(user.id, { store_location: store });
+  const setSelectedStore = async (store: string) => {
+    if (!user) {
+      return false;
     }
+
+    const trimmedStore = store.trim();
+    const previousStore = profile?.store_location ?? null;
+
+    const normalizedStore = trimmedStore.length > 0 ? trimmedStore : null;
+    if (normalizedStore === previousStore) {
+      _setSelectedStore(previousStore);
+      return true;
+    }
+
+    _setSelectedStore(normalizedStore);
+
+    const didUpdate = await updateProfile(user.id, { store_location: normalizedStore });
+    if (!didUpdate) {
+      _setSelectedStore(previousStore);
+    }
+
+    return didUpdate;
   };
 
   return (

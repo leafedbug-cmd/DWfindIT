@@ -15,7 +15,7 @@ interface ProfileState {
   isLoading: boolean;
   error: string | null;
   fetchProfile: (userId: string) => Promise<void>;
-  updateProfile: (userId: string, updates: Partial<Profile>) => Promise<void>;
+  updateProfile: (userId: string, updates: Partial<Profile>) => Promise<boolean>;
 }
 
 export const useProfileStore = create<ProfileState>((set) => ({
@@ -41,8 +41,8 @@ export const useProfileStore = create<ProfileState>((set) => ({
   },
 
   updateProfile: async (userId, updates) => {
+    set({ isLoading: true, error: null });
     try {
-      set({ isLoading: true, error: null });
       const { data, error } = await supabase
         .from('profiles')
         .update(updates)
@@ -53,8 +53,10 @@ export const useProfileStore = create<ProfileState>((set) => ({
       if (error) throw error;
 
       set({ profile: data, isLoading: false });
+      return true;
     } catch (error: any) {
        set({ error: error.message, isLoading: false });
+       return false;
     }
   }
 }));
