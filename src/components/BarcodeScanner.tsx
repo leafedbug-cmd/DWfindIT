@@ -5,15 +5,12 @@ import { Html5Qrcode } from 'html5-qrcode';
 interface BarcodeScannerProps {
   onScanSuccess: (barcode: string) => void;
   onScanError?: (error: string) => void;
-  // Optional sizing tweaks for larger screens
-  maxHeightVh?: number; // default 65
-  maxPixelHeight?: number; // default 700
 }
 
 const SCAN_COOLDOWN_MS = 3000; // 3s cooldown for duplicate scans
 const SWITCH_DELAY_MS = 200;   // tiny pause to let video/DOM settle
 
-export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, onScanError, maxHeightVh = 65, maxPixelHeight = 700 }) => {
+export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, onScanError }) => {
   const [cameras, setCameras] = useState<any[]>([]);
   const [selectedCameraId, setSelectedCameraId] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
@@ -54,10 +51,8 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, o
     if (!html5QrCodeRef.current) return;
     try {
       await html5QrCodeRef.current.stop();
-      // html5-qrcode sometimes keeps stale video; clearing helps avoid "width is 0"
-      try {
-        await html5QrCodeRef.current.clear();
-      } catch {}
+  // html5-qrcode sometimes keeps stale video; clearing helps avoid "width is 0"
+  try { await html5QrCodeRef.current.clear(); } catch {}
     } catch {
       // ignore
     } finally {
@@ -76,23 +71,12 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, o
 
     setIsScanning(true);
     try {
-      // Dynamically size the scan box so labels fit on tablets/desktop
-      const dynamicQrBox = (viewfinderWidth: number, viewfinderHeight: number) => {
-        const vw = Math.max(0, viewfinderWidth);
-        const vh = Math.max(0, viewfinderHeight);
-        // Use a wide rectangle helpful for 1D labels; cap for performance
-        const width = Math.round(Math.min(600, vw * 0.85));
-        const height = Math.round(Math.min(350, vh * 0.55));
-        // Ensure sensible minimums
-        return { width: Math.max(220, width), height: Math.max(160, height) };
-      };
-
       await inst.start(
         { deviceId: { exact: selectedCameraId } },
         {
           fps: 10,
-          qrbox: dynamicQrBox,
-          aspectRatio: 16 / 9,
+          qrbox: { width: 250, height: 250 },
+          aspectRatio: 1.0,
         },
         decodedText => {
           if (!mountedRef.current) return;
@@ -318,10 +302,7 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, o
         id="reader"
         className="w-full rounded-lg overflow-hidden"
         style={{
-          // Keep reasonable size on tablets/desktop
-          height: `min(${maxHeightVh}vh, ${maxPixelHeight}px)`,
-          maxWidth: 'min(100%, 1000px)',
-          margin: '0 auto',
+          minHeight: '300px',
           border: '2px solid #e5e7eb',
           transition: 'border 0.3s ease',
           backgroundColor: isInitialized ? 'black' : '#f3f4f6',
