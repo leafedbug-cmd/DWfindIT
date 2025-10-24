@@ -66,10 +66,10 @@ export const HomePage: React.FC = () => {
 
         workOrdersRes.data.forEach(wo => {
           combinedActivity.push({
-            id: wo.id,
+            id: String(wo.id),
             type: 'Work Order',
-            name: wo.description || `Work Order #${wo.id.slice(0, 8)}`,
-            date: wo.created_at,
+            name: wo.description || `Work Order #${String(wo.id).slice(0, 8)}`,
+            date: wo.created_at ?? new Date().toISOString(),
             path: `/work-orders?id=${wo.id}` // Assuming this is the path
           });
         });

@@ -116,23 +116,35 @@ export const ScanPage: FC = () => {
     setScanResult(null);
 
     try {
+      // Build parts query and add store filter only when available
+      let partsQuery = supabase
+        .from('parts')
+        .select('id, part_number, Part_Description, bin_location, store_location')
+        .eq('part_number', barcode);
+      if (selectedStore) {
+        partsQuery = partsQuery.eq('store_location', selectedStore);
+      }
+
+      const partPromise = partsQuery.maybeSingle();
+      const equipmentPromise = supabase
+        .from('equipment')
+        .select('*')
+        .or(`stock_number.eq.${barcode},serial_number.eq.${barcode}`)
+        .maybeSingle();
+
       const [partResult, equipmentResult] = await Promise.all([
-        supabase
-          .from('parts')
-          .select('id, part_number, Part_Description, bin_location, store_location')
-          .eq('part_number', barcode)
-          .eq('store_location', selectedStore)
-          .maybeSingle(),
-        supabase
-          .from('equipment')
-          .select('*')
-          .or(`stock_number.eq.${barcode},serial_number.eq.${barcode}`)
-          .maybeSingle(),
+        partPromise,
+        equipmentPromise,
       ]);
 
       let foundItem: ScanResultData | null = null;
       if (partResult.data) {
-        foundItem = { ...partResult.data, type: 'part' };
+        // Normalize nullable fields to satisfy Part type
+        const normalizedPart = {
+          ...partResult.data,
+          bin_location: partResult.data.bin_location ?? '',
+        };
+        foundItem = { ...normalizedPart, type: 'part' } as ScanResultData;
       } else if (equipmentResult.data) {
         foundItem = { ...equipmentResult.data, type: 'equipment' };
       }
