@@ -10,12 +10,6 @@ import { useAuthStore } from '../store/authStore';
 import { ChevronRight, List, Moon, Sun } from 'lucide-react';
 
 // Simplified types for this page
-type Profile = {
-  id: string;
-  employee_name?: string | null;
-  role?: string | null;
-};
-
 type UserList = {
   id: string;
   name: string;
@@ -23,10 +17,18 @@ type UserList = {
   updated_at: string | null;
 };
 
+type ManagedEmployee = {
+  id: string | null;
+  employee_name: string;
+  role: string | null;
+  email?: string | null;
+  source: 'profiles' | 'directory';
+};
+
 const ManagerSection: React.FC = () => {
   const navigate = useNavigate();
   const { selectedStore } = useStore();
-  const [employees, setEmployees] = useState<Profile[]>([]);
+  const [employees, setEmployees] = useState<ManagedEmployee[]>([]);
   const [employeeLists, setEmployeeLists] = useState<Record<string, UserList[]>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -44,40 +46,80 @@ const ManagerSection: React.FC = () => {
       setLoading(true);
       setError(null);
       try {
-        // 1. Fetch all employees in the manager's store
-        const { data: employeeData, error: employeeError } = await supabase
+        // Fetch employee profiles for the selected store (non-managers)
+        const { data: profileData, error: profileError } = await supabase
           .from('profiles')
           .select('id, employee_name, role')
           .eq('store_location', selectedStore)
-          .neq('role', 'manager'); // Exclude other managers if needed
-        
-        if (employeeError) throw employeeError;
-        setEmployees(employeeData || []);
-        
-        const userIds = (employeeData || []).map(e => e.id);
-        if (userIds.length === 0) {
-          setEmployeeLists({});
+          .neq('role', 'manager');
+
+        if (profileError) throw profileError;
+
+        if (profileData && profileData.length > 0) {
+          const managedProfiles: ManagedEmployee[] = profileData.map((profileRow) => ({
+            id: profileRow.id,
+            employee_name: profileRow.employee_name ?? 'Unnamed user',
+            role: profileRow.role ?? null,
+            source: 'profiles',
+          }));
+
+          setEmployees(managedProfiles);
+
+          const profileIds = managedProfiles
+            .map((profileRow) => profileRow.id)
+            .filter((value): value is string => Boolean(value));
+
+          if (profileIds.length > 0) {
+            const { data: listData, error: listError } = await supabase
+              .from('lists')
+              .select('id, name, user_id, updated_at')
+              .in('user_id', profileIds)
+              .order('created_at', { ascending: false });
+
+            if (listError) throw listError;
+
+            const groupedLists = (listData || []).reduce<Record<string, UserList[]>>((acc, list) => {
+              const key = list.user_id;
+              if (!acc[key]) {
+                acc[key] = [];
+              }
+              acc[key].push({
+                id: list.id,
+                name: list.name,
+                user_id: list.user_id,
+                updated_at: list.updated_at ?? null,
+              });
+              return acc;
+            }, {});
+
+            setEmployeeLists(groupedLists);
+          } else {
+            setEmployeeLists({});
+          }
           return;
         }
 
-        // 2. Fetch all lists belonging to those employees
-        const { data: listData, error: listError } = await supabase
-          .from('lists')
-          .select('id, name, user_id, updated_at')
-          .in('user_id', userIds)
-          .order('created_at', { ascending: false });
+        // Fallback: Use employee directory when no profiles exist yet
+        const { data: directoryData, error: directoryError } = await supabase
+          .from('employee_directory')
+          .select('email, employee_name, role, is_active')
+          .eq('store_location', selectedStore)
+          .eq('is_active', true)
+          .neq('role', 'manager')
+          .order('employee_name', { ascending: true });
 
-        if (listError) throw listError;
-        
-        // 3. Group the lists by employee
-        const listsByEmployee: Record<string, UserList[]> = {};
-        for (const list of listData || []) {
-          if (!listsByEmployee[list.user_id]) {
-            listsByEmployee[list.user_id] = [];
-          }
-          listsByEmployee[list.user_id].push(list);
-        }
-        setEmployeeLists(listsByEmployee);
+        if (directoryError) throw directoryError;
+
+        const managedDirectory: ManagedEmployee[] = (directoryData || []).map((row) => ({
+          id: null,
+          employee_name: row.employee_name ?? row.email ?? 'Unnamed user',
+          role: row.role ?? null,
+          email: row.email ?? null,
+          source: 'directory',
+        }));
+
+        setEmployees(managedDirectory);
+        setEmployeeLists({});
 
       } catch (e: any) {
         setError(e.message || 'Failed to fetch manager data');
@@ -109,29 +151,53 @@ const ManagerSection: React.FC = () => {
             No employees found for this store.
           </div>
         ) : (
-          employees.map(employee => {
-            const userLists = employeeLists[employee.id] || [];
-            const isExpanded = expandedUserId === employee.id;
+          employees.map((employee, index) => {
+            const employeeKey = employee.id ?? employee.email ?? `${employee.employee_name}-${index}`;
+            const userLists = employee.id ? employeeLists[employee.id] || [] : [];
+            const isExpanded = employee.id !== null && expandedUserId === employee.id;
             return (
-              <div key={employee.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden dark:bg-slate-800 dark:border-slate-700">
+              <div key={employeeKey} className="bg-white border border-gray-200 rounded-xl overflow-hidden dark:bg-slate-800 dark:border-slate-700">
                 <button
-                  onClick={() => setExpandedUserId(isExpanded ? null : employee.id)}
+                  onClick={() => {
+                    if (!employee.id) {
+                      return;
+                    }
+                    setExpandedUserId(isExpanded ? null : employee.id);
+                  }}
                   className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 text-left dark:hover:bg-slate-700/60"
                 >
                   <div>
-                    <p className="font-semibold text-gray-900 dark:text-gray-100">{employee.employee_name || employee.id}</p>
-                    <p className="text-xs text-gray-500 dark:text-gray-300">{userLists.length} list{userLists.length !== 1 ? 's' : ''}</p>
+                    <p className="font-semibold text-gray-900 dark:text-gray-100">
+                      {employee.employee_name || 'Unnamed user'}
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-300">
+                      {employee.source === 'directory'
+                        ? 'Needs to sign in to sync lists'
+                        : `${userLists.length} list${userLists.length !== 1 ? 's' : ''}`}
+                    </p>
                   </div>
-                  <ChevronRight className={`h-5 w-5 text-gray-400 dark:text-gray-300 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                  <ChevronRight
+                    className={`h-5 w-5 text-gray-400 dark:text-gray-300 transition-transform ${
+                      isExpanded ? 'rotate-90' : ''
+                    }`}
+                  />
                 </button>
 
-                {isExpanded && (
+                {employee.source === 'directory' && (
+                  <div className="border-t border-gray-200 bg-gray-50/50 px-4 py-3 text-sm text-gray-500 dark:border-slate-700 dark:bg-slate-900/40 dark:text-gray-300">
+                    {employee.email
+                      ? `Invite ${employee.employee_name || employee.email} to sign in so their lists appear here.`
+                      : 'Employee has not signed in yet.'}
+                  </div>
+                )}
+
+                {employee.source === 'profiles' && isExpanded && (
                   <div className="border-t border-gray-200 bg-gray-50/50 dark:border-slate-700 dark:bg-slate-900/40">
                     {userLists.length > 0 ? (
                       <ul className="divide-y divide-gray-200 dark:divide-slate-700">
-                        {userLists.map(list => (
-                          <li 
-                            key={list.id} 
+                        {userLists.map((list) => (
+                          <li
+                            key={list.id}
                             onClick={() => navigate(`/list/${list.id}`)}
                             className="px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700/60"
                           >
