@@ -3,11 +3,15 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Header } from '../components/Header';
 import { BottomNav } from '../components/BottomNav';
 import { useStore } from '../contexts/StoreContext';
-import { supabase } from '../services/supabase';
+import { supabase } from '../services/supabaseClient';
 import { ChevronRight } from 'lucide-react';
 
-type ListRow = { id: string; name: string; user_id: string; store_location: string | null; updated_at: string | null; };
-type ProfileRow = { id: string; full_name?: string | null; email?: string | null; role?: string | null; };
+type ListRow = { id: string; name: string; user_id: string; created_at: string };
+type ProfileRow = { id: string; employee_name?: string | null; email?: string | null; role?: string | null; store_location?: string | null };
+
+// Helper for custom RPC with email + store info
+const rpcGetProfilesByIds = (ids: string[]) =>
+  (supabase as any).rpc('get_profiles_by_ids', { profile_ids: ids }) as Promise<{ data: any[] | null; error: any | null }>;
 
 export const ManagerPage: React.FC = () => {
   const { selectedStore } = useStore();
@@ -24,19 +28,16 @@ export const ManagerPage: React.FC = () => {
         setLoading(true); setErr(null);
         const { data: listData, error: listErr } = await supabase
           .from('lists')
-          .select('id, name, user_id, store_location, updated_at')
-          .eq('store_location', selectedStore);
+          .select('id, name, user_id, created_at');
         if (listErr) throw listErr;
         if (!alive) return;
-        setLists(listData || []);
-        const userIds = Array.from(new Set((listData || []).map(l => l.user_id)));
+        setLists((listData as ListRow[]) || []);
+        const userIds = Array.from(new Set(((listData as ListRow[]) || []).map((l) => l.user_id)));
         if (userIds.length) {
-          const { data: profData } = await supabase
-            .from('profiles')
-            .select('id, full_name, email, role')
-            .in('id', userIds as string[]);
+          const { data: profData, error: profErr } = await rpcGetProfilesByIds(userIds as string[]);
+          if (profErr) throw profErr;
           const byId: Record<string, ProfileRow> = {};
-          for (const p of (profData || [])) byId[p.id] = p;
+          for (const p of (profData || [])) byId[p.id] = p as ProfileRow;
           if (alive) setProfiles(byId);
         }
       } catch (e: any) {
@@ -50,9 +51,15 @@ export const ManagerPage: React.FC = () => {
 
   const grouped = useMemo(() => {
     const m = new Map<string, ListRow[]>();
-    for (const l of lists) { if (!m.has(l.user_id)) m.set(l.user_id, []); m.get(l.user_id)!.push(l); }
+    for (const l of lists) {
+      const store = profiles[l.user_id]?.store_location ?? null;
+      if (selectedStore && store && store !== selectedStore) continue;
+      if (selectedStore && !store) continue;
+      if (!m.has(l.user_id)) m.set(l.user_id, []);
+      m.get(l.user_id)!.push(l);
+    }
     return m;
-  }, [lists]);
+  }, [lists, profiles, selectedStore]);
 
   return (
     <div className="min-h-screen flex flex-col pb-16 bg-gray-50 dark:bg-slate-900 text-gray-900 dark:text-gray-100">
@@ -69,24 +76,25 @@ export const ManagerPage: React.FC = () => {
           <div className="space-y-3">
             {[...grouped.entries()].map(([userId, userLists]) => {
               const p = profiles[userId];
-              const title = p?.full_name || p?.email || userId;
+              const title = p?.employee_name || p?.email || userId;
               const open = userId === expanded;
+              const displayedUserLists = userLists;
               return (
                 <div key={userId} className="bg-white border border-gray-200 rounded-xl overflow-hidden dark:bg-slate-800 dark:border-slate-700">
                   <button onClick={() => setExpanded(open ? null : userId)} className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 dark:hover:bg-slate-700/60">
                     <div>
                       <div className="font-semibold text-gray-900 dark:text-gray-100">{title}</div>
-                      <div className="text-xs text-gray-500 dark:text-gray-300">{userLists.length} list{userLists.length !== 1 ? 's' : ''} in {selectedStore}{p?.role ? ` • role: ${p.role}` : ''}</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-300">{displayedUserLists.length} list{displayedUserLists.length !== 1 ? 's' : ''}{selectedStore ? ` in ${selectedStore}` : ''}{p?.role ? ` • role: ${p.role}` : ''}</div>
                     </div>
                     <ChevronRight className={`h-4 w-4 transition-transform ${open ? 'rotate-90' : ''}`} />
                   </button>
                   {open && (
                     <div className="border-t border-gray-200 divide-y dark:border-slate-700 dark:divide-slate-700">
-                      {userLists.map(l => (
+                      {displayedUserLists.map(l => (
                         <div key={l.id} className="flex items-center justify-between px-4 py-3">
                           <div>
                             <div className="text-sm font-medium text-gray-900 dark:text-gray-100">{l.name}</div>
-                            <div className="text-xs text-gray-500 dark:text-gray-300">Updated {l.updated_at ? new Date(l.updated_at).toLocaleString() : '—'}</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-300">Created {l.created_at ? new Date(l.created_at).toLocaleString() : '—'}</div>
                           </div>
                           <a href={`/list/${l.id}`} className="text-orange-600 text-sm font-medium hover:underline">View</a>
                         </div>

@@ -11,6 +11,13 @@ import { useAuthStore } from '../store/authStore';
 import { Trash2, Plus, FileText, FileSpreadsheet, Search, Share2, UserPlus, UserMinus, X } from 'lucide-react';
 import { generateCSV, generatePDF } from '../utils/export';
 
+// Small helpers to call custom RPCs not present in generated TS types
+const rpcGetProfilesByIds = (ids: string[]) =>
+  (supabase as any).rpc('get_profiles_by_ids', { profile_ids: ids }) as Promise<{ data: any[] | null; error: any | null }>;
+
+const rpcSearchProfilesForSharing = (term: string, limit: number) =>
+  (supabase as any).rpc('search_profiles_for_sharing', { search_term: term, limit_count: limit }) as Promise<{ data: any[] | null; error: any | null }>;
+
 // --- Numeric Keypad Component (for Quantity) ---
 const Keypad = ({ initialValue, onDone, onCancel }: { initialValue: number, onDone: (value: number) => void, onCancel: () => void }) => {
     const [inputValue, setInputValue] = useState(String(initialValue));
@@ -254,13 +261,11 @@ export const ListDetailPage: React.FC = () => {
         }
 
         if (participantIds.size > 0) {
-          const { data, error } = await supabase.rpc('get_profiles_by_ids', {
-            profile_ids: Array.from(participantIds),
-          });
+          const { data, error } = await rpcGetProfilesByIds(Array.from(participantIds));
           if (error) throw error;
 
           const profileMap: Record<string, ShareProfileSummary> = {};
-          (data || []).forEach((profile: any) => {
+          (data ?? []).forEach((profile: any) => {
             profileMap[profile.id] = profile as ShareProfileSummary;
           });
           setShareProfiles((prev) => ({ ...prev, ...profileMap }));
@@ -330,14 +335,11 @@ export const ListDetailPage: React.FC = () => {
     setShareError(null);
     setShareMessage(null);
     try {
-      const { data, error } = await supabase.rpc('search_profiles_for_sharing', {
-        search_term: term,
-        limit_count: 10,
-      });
+      const { data, error } = await rpcSearchProfilesForSharing(term, 10);
       if (error) throw error;
 
       const candidateMap: Record<string, ShareProfileSummary> = {};
-      (data || []).forEach((profile: any) => {
+      (data ?? []).forEach((profile: any) => {
         candidateMap[profile.id] = profile as ShareProfileSummary;
       });
       setShareProfiles((prev) => ({ ...prev, ...candidateMap }));
@@ -347,7 +349,7 @@ export const ListDetailPage: React.FC = () => {
         alreadySharedIds.add(currentUserId);
       }
 
-      const filtered = (data || []).filter(
+      const filtered = (data ?? []).filter(
         (profile: any) => profile?.id && !alreadySharedIds.has(profile.id)
       ) as ShareProfileSummary[];
       if (!filtered || filtered.length === 0) {
@@ -386,9 +388,9 @@ export const ListDetailPage: React.FC = () => {
   useEffect(() => {
     const ownerId = currentList?.sharedBy;
     if (ownerId && !shareProfiles[ownerId]) {
-      supabase
-        .rpc('get_profiles_by_ids', { profile_ids: [ownerId] })
-        .then(({ data, error }) => {
+      (async () => {
+        try {
+          const { data, error } = await rpcGetProfilesByIds([ownerId]);
           if (!error && data && data.length > 0) {
             const profile = data[0] as ShareProfileSummary;
             setShareProfiles((prev) => ({
@@ -396,10 +398,10 @@ export const ListDetailPage: React.FC = () => {
               [profile.id]: profile,
             }));
           }
-        })
-        .catch((err) => {
+        } catch (err) {
           console.error('Failed to load owner profile', err);
-        });
+        }
+      })();
     }
   }, [currentList?.sharedBy, shareProfiles]);
 
@@ -524,8 +526,15 @@ export const ListDetailPage: React.FC = () => {
     setIsSearching(true);
     setSearchError(null);
     try {
-        const { data: partData, error: partError } = await supabase
-            .from('parts').select('id, part_number').eq('part_number', searchValue).eq('store_location', selectedStore).maybeSingle();
+    // Build parts query; filter by store only if selectedStore is present to avoid TS null issues
+    let partsQuery: any = supabase
+      .from('parts')
+      .select('id, part_number')
+      .eq('part_number', searchValue);
+    if (selectedStore) {
+      partsQuery = partsQuery.eq('store_location', selectedStore);
+    }
+    const { data: partData, error: partError } = await partsQuery.maybeSingle();
         if (partError) throw partError;
         if (partData) {
             await addItem({ list_id: listId, item_type: 'part', part_id: partData.id, quantity: 1 });
