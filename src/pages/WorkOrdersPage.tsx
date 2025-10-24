@@ -222,14 +222,31 @@ export const WorkOrdersPage: React.FC = () => {
               <input className="w-full px-3 py-2 rounded border bg-white dark:bg-slate-900 dark:border-slate-700 dark:text-gray-100" placeholder="Model" value={equipmentForm.model} onChange={e => handleFormChange('model', e.target.value)} />
               <input className="w-full px-3 py-2 rounded border bg-white dark:bg-slate-900 dark:border-slate-700 dark:text-gray-100" placeholder="Serial #" value={equipmentForm.serial} onChange={e => handleFormChange('serial', e.target.value)} />
               <input className="w-full px-3 py-2 rounded border bg-white dark:bg-slate-900 dark:border-slate-700 dark:text-gray-100" placeholder="Stock #" value={equipmentForm.stock} onChange={e => handleFormChange('stock', e.target.value)} />
-              <input className="w-full px-3 py-2 rounded border bg-white dark:bg-slate-900 dark:border-slate-700 dark:text-gray-100" placeholder="Hourmeter" value={equipmentForm.hourmeter} onChange={e => handleFormChange('hourmeter', e.target.value)} />
+              <input
+                type="tel"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                className="w-full px-3 py-2 rounded border bg-white dark:bg-slate-900 dark:border-slate-700 dark:text-gray-100"
+                placeholder="Hourmeter"
+                value={equipmentForm.hourmeter}
+                onChange={e => handleFormChange('hourmeter', e.target.value)}
+              />
             </div>
 
             <div className="grid md:grid-cols-2 gap-4">
               <input className="w-full px-3 py-2 rounded border bg-white dark:bg-slate-900 dark:border-slate-700 dark:text-gray-100" placeholder="Customer Number" value={customerNumber} onChange={e=>setCustomerNumber(e.target.value)} />
               <input className="w-full px-3 py-2 rounded border bg-white dark:bg-slate-900 dark:border-slate-700 dark:text-gray-100" placeholder="Contact Name" value={contactName} onChange={e=>setContactName(e.target.value)} />
-              <input className="w-full px-3 py-2 rounded border bg-white dark:bg-slate-900 dark:border-slate-700 dark:text-gray-100" placeholder="Contact Phone" value={contactPhone} onChange={e=>setContactPhone(e.target.value)} />
-              <input className="w-full px-3 py-2 rounded border bg-gray-100 cursor-not-allowed dark:bg-slate-800 dark:border-slate-700 dark:text-gray-100" placeholder="Store Location" value={selectedStore} readOnly />
+              <input
+                type="tel"
+                inputMode="numeric"
+                autoComplete="tel"
+                pattern="[0-9]*"
+                className="w-full px-3 py-2 rounded border bg-white dark:bg-slate-900 dark:border-slate-700 dark:text-gray-100"
+                placeholder="Contact Phone"
+                value={contactPhone}
+                onChange={e=>setContactPhone(e.target.value)}
+              />
+              <input className="w-full px-3 py-2 rounded border bg-gray-100 cursor-not-allowed dark:bg-slate-800 dark:border-slate-700 dark:text-gray-100" placeholder="Store Location" value={selectedStore ?? ""} readOnly />
               <input className="w-full px-3 py-2 rounded border bg-white md:col-span-2 dark:bg-slate-900 dark:border-slate-700 dark:text-gray-100" placeholder="Job Location (optional)" value={jobLocation} onChange={e=>setJobLocation(e.target.value)} />
               <textarea className="w-full px-3 py-2 rounded border bg-white md:col-span-2 h-28 dark:bg-slate-900 dark:border-slate-700 dark:text-gray-100" placeholder="Instructions" value={instructions} onChange={e=>setInstructions(e.target.value)} />
             </div>
