@@ -58,13 +58,19 @@ const computeOtsuThreshold = (histogram: Uint32Array, totalPixels: number) => {
   return threshold;
 };
 
-const countComponents = (
+type Component = {
+  area: number;
+  centerX: number;
+  centerY: number;
+};
+
+const extractComponents = (
   grayscale: Uint8ClampedArray,
   comparator: (value: number) => boolean,
   width: number,
   height: number,
   minAreaMultiplier = 0.0015
-) => {
+): Component[] => {
   const totalPixels = width * height;
   const binary = new Uint8Array(totalPixels);
   for (let i = 0; i < totalPixels; i++) {
@@ -74,7 +80,7 @@ const countComponents = (
   const visited = new Uint8Array(totalPixels);
   const stack: number[] = [];
   const minArea = Math.max(40, Math.round(totalPixels * minAreaMultiplier));
-  let count = 0;
+  const components: Component[] = [];
 
   const neighbors = [
     [1, 0],
@@ -91,6 +97,11 @@ const countComponents = (
     if (!binary[index] || visited[index]) continue;
 
     let area = 0;
+    let minX = Number.POSITIVE_INFINITY;
+    let maxX = Number.NEGATIVE_INFINITY;
+    let minY = Number.POSITIVE_INFINITY;
+    let maxY = Number.NEGATIVE_INFINITY;
+
     stack.push(index);
     visited[index] = 1;
 
@@ -100,6 +111,11 @@ const countComponents = (
 
       const x = current % width;
       const y = Math.floor(current / width);
+
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y);
+      maxY = Math.max(maxY, y);
 
       for (const [dx, dy] of neighbors) {
         const nx = x + dx;
@@ -114,12 +130,18 @@ const countComponents = (
       }
     }
 
-    if (area >= minArea) {
-      count++;
+    if (area >= minArea && Number.isFinite(minX) && Number.isFinite(minY)) {
+      const centerX = ((minX + maxX) / 2) / width;
+      const centerY = ((minY + maxY) / 2) / height;
+      components.push({
+        area,
+        centerX: clamp(centerX, 0, 1),
+        centerY: clamp(centerY, 0, 1),
+      });
     }
   }
 
-  return count;
+  return components;
 };
 
 export const AutoCountPage: React.FC = () => {
@@ -128,6 +150,9 @@ export const AutoCountPage: React.FC = () => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
+  const [availableCameras, setAvailableCameras] = useState<MediaDeviceInfo[]>([]);
+  const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null);
+  const [isCameraSwitching, setIsCameraSwitching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isCameraReady, setIsCameraReady] = useState(false);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
@@ -143,7 +168,145 @@ export const AutoCountPage: React.FC = () => {
   const [countError, setCountError] = useState<string | null>(null);
   const [annotations, setAnnotations] = useState<CountAnnotation[]>([]);
 
-  const startCamera = useCallback(async () => {
+  const startCamera = useCallback(
+    async (deviceId?: string) => {
+      try {
+        setIsCameraSwitching(true);
+        setError(null);
+        setCapturedImage(null);
+        setCountResult(null);
+        setCountError(null);
+        setAnnotations([]);
+        setIsCameraReady(false);
+
+        streamRef.current?.getTracks().forEach((track) => track.stop());
+
+        const constraints: MediaStreamConstraints = {
+          video: deviceId
+            ? {
+                deviceId: { exact: deviceId },
+                width: { ideal: 1280 },
+                height: { ideal: 720 },
+              }
+            : {
+                facingMode: { ideal: 'environment' },
+                width: { ideal: 1280 },
+                height: { ideal: 720 },
+              },
+          audio: false,
+        };
+
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+
+        streamRef.current = stream;
+
+        const [track] = stream.getVideoTracks();
+        const activeDeviceId = track?.getSettings().deviceId ?? deviceId ?? null;
+        if (activeDeviceId) {
+          setSelectedCameraId(activeDeviceId);
+        }
+
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          try {
+            await videoRef.current.play();
+          } catch {
+            setError('Unable to start camera preview. Tap to retry.');
+          }
+        }
+
+        try {
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const videoInputs = devices.filter((mediaDevice) => mediaDevice.kind === 'videoinput');
+          setAvailableCameras(videoInputs);
+        } catch (enumerateError) {
+          console.warn('Unable to enumerate cameras', enumerateError);
+        }
+
+        setIsCameraReady(true);
+      } catch (cameraError: any) {
+        console.error('Camera error', cameraError);
+        setError(cameraError?.message ?? 'Unable to access camera. Check permissions and try again.');
+        setIsCameraReady(false);
+      } finally {
+        setIsCameraSwitching(false);
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    startCamera();
+
+    return () => {
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    };
+  }, [startCamera]);
+
+  const handleRetake = useCallback(() => {
+    startCamera(selectedCameraId ?? undefined);
+  }, [selectedCameraId, startCamera]);
+
+  const handleCapture = useCallback(async () => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return;
+
+    const width = video.videoWidth;
+    const height = video.videoHeight;
+    if (!width || !height) {
+      setError('Camera not ready yet. Give it another second.');
+      return;
+    }
+
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0, width, height);
+    const dataUrl = canvas.toDataURL('image/png');
+    setCapturedImage(dataUrl);
+    setCountResult(null);
+    setCountError(null);
+    setAnnotations([]);
+    video.pause();
+  }, []);
+
+  const handlePreviewTap = useCallback(() => {
+    if (capturedImage || !isCameraReady || isCounting || isCameraSwitching) {
+      return;
+    }
+    handleCapture();
+  }, [capturedImage, handleCapture, isCameraReady, isCounting, isCameraSwitching]);
+
+  const handlePreviewKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLVideoElement>) => {
+      if (event.key !== 'Enter' && event.key !== ' ') {
+        return;
+      }
+      if (capturedImage || !isCameraReady || isCounting || isCameraSwitching) {
+        return;
+      }
+      event.preventDefault();
+      handleCapture();
+    },
+    [capturedImage, handleCapture, isCameraReady, isCounting, isCameraSwitching]
+  );
+
+  const handleCameraSelectChange = useCallback(
+    (event: React.ChangeEvent<HTMLSelectElement>) => {
+      const newCameraId = event.target.value;
+      if (!newCameraId || newCameraId === selectedCameraId) {
+        return;
+      }
+      setSelectedCameraId(newCameraId);
+      startCamera(newCameraId);
+    },
+    [selectedCameraId, startCamera]
+  );
+
+*** End Patch
     try {
       setError(null);
       setCapturedImage(null);
@@ -176,54 +339,6 @@ export const AutoCountPage: React.FC = () => {
       setIsCameraReady(false);
     }
   }, []);
-
-  useEffect(() => {
-    startCamera();
-
-    return () => {
-      streamRef.current?.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
-    };
-  }, [startCamera]);
-
-  const resetState = useCallback(() => {
-    setCapturedImage(null);
-    setCountResult(null);
-    setCountError(null);
-    setAnnotations([]);
-    setOverlayRect({ x: 0.15, y: 0.15, width: 0.7, height: 0.6 });
-    if (videoRef.current) {
-      videoRef.current.currentTime = 0;
-      videoRef.current.play().catch(() => {
-        setError('Unable to resume camera. Reload to try again.');
-      });
-    }
-  }, []);
-
-  const handleCapture = async () => {
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    if (!video || !canvas) return;
-
-    const width = video.videoWidth;
-    const height = video.videoHeight;
-    if (!width || !height) {
-      setError('Camera not ready yet. Give it another second.');
-      return;
-    }
-
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.drawImage(video, 0, 0, width, height);
-    const dataUrl = canvas.toDataURL('image/png');
-    setCapturedImage(dataUrl);
-    setCountResult(null);
-    setCountError(null);
-    setAnnotations([]);
-    video.pause();
-  };
 
   const handleOverlayPointerDown = (handle: DragHandle, event: React.PointerEvent) => {
     if (!containerRef.current) return;
@@ -382,6 +497,10 @@ export const AutoCountPage: React.FC = () => {
           setCountResult(data.count);
           if (data.count === 0) {
             setCountError('AutoCount did not detect any parts. Try retaking the photo or adjusting the zone.');
+          } else if (formattedAnnotations.length === 0) {
+            setCountError('AutoCount returned a count but no marker positions. Try retaking the photo.');
+          } else {
+            setCountError(null);
           }
           return;
         }
@@ -406,36 +525,57 @@ export const AutoCountPage: React.FC = () => {
       }
 
       const threshold = computeOtsuThreshold(histogram, totalPixels);
-      const darkCount = countComponents(grayscale, (value) => value < threshold, imageData.width, imageData.height);
-      const lightCount = countComponents(grayscale, (value) => value > threshold, imageData.width, imageData.height);
+      const darkComponents = extractComponents(
+        grayscale,
+        (value) => value < threshold,
+        imageData.width,
+        imageData.height
+      );
+      const lightComponents = extractComponents(
+        grayscale,
+        (value) => value > threshold,
+        imageData.width,
+        imageData.height
+      );
 
-      let bestCount = Math.max(darkCount, lightCount);
+      let chosenComponents =
+        lightComponents.length > darkComponents.length ? lightComponents : darkComponents;
 
-      if (bestCount === 0) {
-        const relaxedDark = countComponents(
+      if (!chosenComponents.length) {
+        const relaxedDark = extractComponents(
           grayscale,
           (value) => value < threshold,
           imageData.width,
           imageData.height,
           0.0009
         );
-        const relaxedLight = countComponents(
+        const relaxedLight = extractComponents(
           grayscale,
           (value) => value > threshold,
           imageData.width,
           imageData.height,
           0.0009
         );
-        bestCount = Math.max(relaxedDark, relaxedLight);
+        chosenComponents = relaxedLight.length > relaxedDark.length ? relaxedLight : relaxedDark;
       }
 
-      setAnnotations([]);
-
-      if (bestCount === 0) {
+      if (!chosenComponents.length) {
+        setAnnotations([]);
         setCountResult(0);
         setCountError('AutoCount could not identify distinct items. Try improving focus, lighting, or adjusting the zone.');
       } else {
-        setCountResult(bestCount);
+        const generatedAnnotations = chosenComponents
+          .sort((a, b) => a.centerY - b.centerY || a.centerX - b.centerX)
+          .map((component, index) => ({
+            label: String(index + 1),
+            centerX: component.centerX,
+            centerY: component.centerY,
+            confidence: null,
+          }));
+
+        setAnnotations(generatedAnnotations);
+        setCountResult(generatedAnnotations.length);
+        setCountError(null);
       }
     } catch (countingError: any) {
       console.error('AutoCount failed', countingError);
@@ -452,12 +592,38 @@ export const AutoCountPage: React.FC = () => {
         <section className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-gray-200 dark:border-slate-700 p-4">
           <h1 className="text-xl font-semibold mb-2">Capture & Count</h1>
           <p className="text-sm text-gray-600 dark:text-gray-300">
-            Tap the Ditch Witch shutter to freeze the frame, adjust the green AutoCount zone, then press Done to count
-            items inside the box automatically.
+            Tap anywhere on the live preview to freeze the frame, adjust the green AutoCount zone, then press Done to
+            count the items inside automatically.
           </p>
         </section>
 
         <section className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-gray-200 dark:border-slate-700 p-4">
+          {availableCameras.length > 1 && (
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+              <label
+                htmlFor="camera-select"
+                className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400"
+              >
+                Camera
+              </label>
+              <div className="flex items-center gap-2">
+                {isCameraSwitching && <Loader2 className="h-4 w-4 animate-spin text-orange-500" />}
+                <select
+                  id="camera-select"
+                  value={selectedCameraId ?? ''}
+                  onChange={handleCameraSelectChange}
+                  disabled={isCameraSwitching}
+                  className="min-w-[10rem] rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                >
+                  {availableCameras.map((device, index) => (
+                    <option key={device.deviceId} value={device.deviceId}>
+                      {device.label || `Camera ${index + 1}`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
           <div
             ref={containerRef}
             className="relative w-full rounded-2xl overflow-hidden bg-black aspect-[3/4] sm:aspect-video"
@@ -468,8 +634,24 @@ export const AutoCountPage: React.FC = () => {
                   ref={videoRef}
                   playsInline
                   muted
-                  className="absolute inset-0 h-full w-full object-cover"
+                  onClick={handlePreviewTap}
+                  onKeyDown={handlePreviewKeyDown}
+                  role="button"
+                  tabIndex={0}
+                  aria-label="Tap to capture the current frame"
+                  className="absolute inset-0 h-full w-full object-cover cursor-pointer focus:outline-none"
                 />
+                {isCameraReady && !error && !isCameraSwitching && (
+                  <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-between py-4 text-white">
+                    <div className="flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs font-medium backdrop-blur">
+                      <span className="inline-flex h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
+                      Live preview
+                    </div>
+                    <div className="rounded-full bg-slate-900/70 px-4 py-1 text-sm font-medium shadow-lg shadow-black/40">
+                      Tap to capture
+                    </div>
+                  </div>
+                )}
                 {!isCameraReady && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/70 text-white space-y-3">
                     <Loader2 className="h-10 w-10 animate-spin" />
@@ -482,9 +664,10 @@ export const AutoCountPage: React.FC = () => {
                     <p>{error}</p>
                     <button
                       onClick={() => {
-                        startCamera();
+                        startCamera(selectedCameraId ?? undefined);
                       }}
-                      className="px-4 py-2 bg-orange-500 hover:bg-orange-600 rounded-full font-medium"
+                      disabled={isCameraSwitching}
+                      className="px-4 py-2 bg-orange-500 hover:bg-orange-600 disabled:bg-orange-300 rounded-full font-medium transition-colors"
                     >
                       Try Again
                     </button>
@@ -495,8 +678,8 @@ export const AutoCountPage: React.FC = () => {
               <>
                 <img src={capturedImage} alt="Captured frame" className="absolute inset-0 h-full w-full object-contain bg-black" />
                 <div
-                  className="absolute border-2 border-emerald-400 bg-emerald-500/10 rounded-xl backdrop-blur-[1px] cursor-move relative"
-                  style={overlayStyle}
+                  className="absolute border-2 border-black/80 dark:border-white/80 rounded-xl cursor-move relative bg-transparent"
+                  style={{ ...overlayStyle, touchAction: 'none' }}
                   onPointerDown={(event) => handleOverlayPointerDown('move', event)}
                 >
                   <button
@@ -513,6 +696,7 @@ export const AutoCountPage: React.FC = () => {
                       background: '#10b981',
                       border: '2px solid white',
                       position: 'absolute',
+                      touchAction: 'none',
                     };
 
                     if (handle.includes('top')) handleStyle.top = '-9px';
@@ -554,34 +738,23 @@ export const AutoCountPage: React.FC = () => {
 
         <section className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-gray-200 dark:border-slate-700 p-4 space-y-4">
           {!capturedImage ? (
-            <div className="flex flex-col items-center justify-center space-y-4">
-              <div className="text-center text-sm text-gray-600 dark:text-gray-300">
-                Align the items you want to count within the frame, then tap the shutter.
-              </div>
-              <button
-                className="relative w-24 h-24 rounded-full flex items-center justify-center focus:outline-none focus:ring-4 focus:ring-orange-400/60 transition-transform active:scale-95"
-                style={{
-                  background: 'radial-gradient(circle at center, #f46b2c 0%, #f46b2c 55%, #111 56%, #111 100%)',
-                  boxShadow: '0 12px 24px -12px rgba(0,0,0,0.8)',
-                }}
-                onClick={handleCapture}
-                disabled={!!error || !isCameraReady}
-              >
-                <span className="text-xl font-bold tracking-widest text-white uppercase">DW</span>
-              </button>
+            <div className="text-center text-sm text-gray-600 dark:text-gray-300">
+              Align the parts you want to count within the preview, then tap the live view to freeze the frame. You can
+              switch cameras above if needed.
             </div>
           ) : (
             <div className="flex flex-wrap items-center justify-center gap-3">
               <button
-                onClick={resetState}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-gray-300 dark:border-slate-600 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                onClick={handleRetake}
+                disabled={isCameraSwitching}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-gray-300 dark:border-slate-600 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 <RotateCcw className="h-4 w-4" />
                 Retake
               </button>
               <button
                 onClick={handleCountItems}
-                disabled={isCounting}
+                disabled={isCounting || isCameraSwitching}
                 className="inline-flex items-center gap-2 px-5 py-2 rounded-full bg-orange-500 hover:bg-orange-600 disabled:bg-orange-300 text-white font-medium transition-colors"
               >
                 {isCounting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
