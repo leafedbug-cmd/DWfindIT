@@ -306,40 +306,6 @@ export const AutoCountPage: React.FC = () => {
     [selectedCameraId, startCamera]
   );
 
-*** End Patch
-    try {
-      setError(null);
-      setCapturedImage(null);
-      setCountResult(null);
-      setCountError(null);
-      setIsCameraReady(false);
-
-      streamRef.current?.getTracks().forEach((track) => track.stop());
-
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { ideal: 'environment' },
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-        },
-        audio: false,
-      });
-
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play().catch(() => {
-          setError('Unable to start camera preview. Tap to retry.');
-        });
-      }
-      setIsCameraReady(true);
-    } catch (cameraError: any) {
-      console.error('Camera error', cameraError);
-      setError(cameraError?.message ?? 'Unable to access camera. Check permissions and try again.');
-      setIsCameraReady(false);
-    }
-  }, []);
-
   const handleOverlayPointerDown = (handle: DragHandle, event: React.PointerEvent) => {
     if (!containerRef.current) return;
     event.preventDefault();
