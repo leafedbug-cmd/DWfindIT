@@ -1,5 +1,5 @@
 // supabase/functions/autocount/index.ts
-// Edge Function that proxies AutoCount requests to OpenAI gpt-4o-mini for vision counting.
+// Edge Function that proxies AutoCount requests to OpenAI gpt-4.1 for high-accuracy vision counting.
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
 const headers = {
@@ -105,7 +105,7 @@ serve(async (req: Request): Promise<Response> => {
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: "gpt-4.1",
         input: [
           {
             role: "system",
