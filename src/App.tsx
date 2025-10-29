@@ -29,6 +29,9 @@ const WorkOrdersPage = lazy(() =>
 const InventoryPage = lazy(() =>
   import('./pages/InventoryPage').then((module) => ({ default: module.InventoryPage }))
 ); // ADDED
+const AutoCountPage = lazy(() =>
+  import('./pages/AutoCountPage').then((module) => ({ default: module.AutoCountPage }))
+);
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, isLoading } = useAuthStore();
@@ -129,6 +132,15 @@ function App() {
                 element={
                   <ProtectedRoute>
                     <InventoryPage />
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/autocount"
+                element={
+                  <ProtectedRoute>
+                    <AutoCountPage />
                   </ProtectedRoute>
                 }
               />

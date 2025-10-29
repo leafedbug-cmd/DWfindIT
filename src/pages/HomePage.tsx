@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Header } from '../components/Header';
 import { BottomNav } from '../components/BottomNav';
-import { Package, Wrench, List, ClipboardCheck } from 'lucide-react'; // UPDATED icons
+import { Package, Wrench, List, ClipboardCheck, Camera } from 'lucide-react'; // UPDATED icons
 import { supabase } from '../services/supabaseClient';
 import { useStore } from '../contexts/StoreContext';
 import { useAuthStore } from '../store/authStore';
@@ -101,7 +101,7 @@ export const HomePage: React.FC = () => {
         </div>
         <div className="mb-8">
           <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">Quick Actions</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <button onClick={() => navigate('/work-orders')} className="bg-white dark:bg-slate-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-slate-700 hover:shadow-md transition-shadow flex flex-col items-center">
               <Wrench className="h-8 w-8 text-orange-600 mb-2" />
               <span className="font-medium text-gray-900 dark:text-gray-100">Work Orders</span>
@@ -111,6 +111,11 @@ export const HomePage: React.FC = () => {
               <Package className="h-8 w-8 text-orange-600 mb-2" />
               <span className="font-medium text-gray-900 dark:text-gray-100">Inventory</span>
               <span className="text-sm text-gray-500 dark:text-gray-300 text-center">Browse parts</span>
+            </button>
+            <button onClick={() => navigate('/autocount')} className="bg-white dark:bg-slate-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-slate-700 hover:shadow-md transition-shadow flex flex-col items-center">
+              <Camera className="h-8 w-8 text-orange-600 mb-2" />
+              <span className="font-medium text-gray-900 dark:text-gray-100">AutoCount</span>
+              <span className="text-sm text-gray-500 dark:text-gray-300 text-center">Capture & count items</span>
             </button>
           </div>
         </div>
