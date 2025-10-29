@@ -15,6 +15,105 @@ type DragHandle = 'move' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-ri
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
 
+const computeOtsuThreshold = (histogram: Uint32Array, totalPixels: number) => {
+  let sum = 0;
+  for (let i = 0; i < 256; i++) {
+    sum += i * histogram[i];
+  }
+
+  let sumBackground = 0;
+  let weightBackground = 0;
+  let weightForeground = 0;
+
+  let varianceMax = 0;
+  let threshold = 127;
+
+  for (let i = 0; i < 256; i++) {
+    weightBackground += histogram[i];
+    if (weightBackground === 0) continue;
+
+    weightForeground = totalPixels - weightBackground;
+    if (weightForeground === 0) break;
+
+    sumBackground += i * histogram[i];
+
+    const meanBackground = sumBackground / weightBackground;
+    const meanForeground = (sum - sumBackground) / weightForeground;
+    const varianceBetween = weightBackground * weightForeground * (meanBackground - meanForeground) * (meanBackground - meanForeground);
+
+    if (varianceBetween > varianceMax) {
+      varianceMax = varianceBetween;
+      threshold = i;
+    }
+  }
+
+  return threshold;
+};
+
+const countComponents = (
+  grayscale: Uint8ClampedArray,
+  comparator: (value: number) => boolean,
+  width: number,
+  height: number,
+  minAreaMultiplier = 0.0015
+) => {
+  const totalPixels = width * height;
+  const binary = new Uint8Array(totalPixels);
+  for (let i = 0; i < totalPixels; i++) {
+    binary[i] = comparator(grayscale[i]) ? 1 : 0;
+  }
+
+  const visited = new Uint8Array(totalPixels);
+  const stack: number[] = [];
+  const minArea = Math.max(40, Math.round(totalPixels * minAreaMultiplier));
+  let count = 0;
+
+  const neighbors = [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+    [1, 1],
+    [1, -1],
+    [-1, 1],
+    [-1, -1],
+  ];
+
+  for (let index = 0; index < totalPixels; index++) {
+    if (!binary[index] || visited[index]) continue;
+
+    let area = 0;
+    stack.push(index);
+    visited[index] = 1;
+
+    while (stack.length > 0) {
+      const current = stack.pop()!;
+      area++;
+
+      const x = current % width;
+      const y = Math.floor(current / width);
+
+      for (const [dx, dy] of neighbors) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+
+        const neighborIndex = ny * width + nx;
+        if (binary[neighborIndex] && !visited[neighborIndex]) {
+          visited[neighborIndex] = 1;
+          stack.push(neighborIndex);
+        }
+      }
+    }
+
+    if (area >= minArea) {
+      count++;
+    }
+  }
+
+  return count;
+};
+
 export const AutoCountPage: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -34,9 +133,6 @@ export const AutoCountPage: React.FC = () => {
   const [isCounting, setIsCounting] = useState(false);
   const [countResult, setCountResult] = useState<number | null>(null);
   const [countError, setCountError] = useState<string | null>(null);
-
-  const modelRef = useRef<import('@tensorflow-models/coco-ssd').ObjectDetection | null>(null);
-  const tfRef = useRef<typeof import('@tensorflow/tfjs') | null>(null);
 
   const startCamera = useCallback(async () => {
     try {
@@ -80,34 +176,6 @@ export const AutoCountPage: React.FC = () => {
       streamRef.current = null;
     };
   }, [startCamera]);
-
-  const ensureModel = useCallback(async () => {
-    if (modelRef.current) {
-      return modelRef.current;
-    }
-
-    try {
-      if (!tfRef.current) {
-        tfRef.current = await import('@tensorflow/tfjs');
-        const backend = tfRef.current.getBackend();
-        if (backend !== 'webgl') {
-          try {
-            await tfRef.current.setBackend('webgl');
-          } catch {
-            await tfRef.current.setBackend('cpu');
-          }
-        }
-        await tfRef.current.ready();
-      }
-
-      const cocoSsd = await import('@tensorflow-models/coco-ssd');
-      modelRef.current = await cocoSsd.load();
-      return modelRef.current;
-    } catch (modelError: any) {
-      console.error('Model load error', modelError);
-      throw new Error(modelError?.message ?? 'Unable to load counting model. Check your connection and try again.');
-    }
-  }, []);
 
   const resetState = useCallback(() => {
     setCapturedImage(null);
@@ -239,8 +307,6 @@ export const AutoCountPage: React.FC = () => {
     setCountError(null);
 
     try {
-      const model = await ensureModel();
-
       const baseImage = new Image();
       baseImage.src = capturedImage;
       await baseImage.decode();
@@ -275,9 +341,51 @@ export const AutoCountPage: React.FC = () => {
         cropCanvas.height
       );
 
-      const predictions = await model.detect(cropCanvas);
-      const confidentDetections = predictions.filter((prediction) => prediction.score >= 0.5);
-      setCountResult(confidentDetections.length);
+      const imageData = cropCtx.getImageData(0, 0, cropCanvas.width, cropCanvas.height);
+      const totalPixels = imageData.width * imageData.height;
+      const histogram = new Uint32Array(256);
+      const grayscale = new Uint8ClampedArray(totalPixels);
+
+      for (let i = 0, px = 0; i < imageData.data.length; i += 4, px++) {
+        const r = imageData.data[i];
+        const g = imageData.data[i + 1];
+        const b = imageData.data[i + 2];
+        // Perceptual luminance
+        const lum = Math.round(0.2126 * r + 0.7152 * g + 0.0722 * b);
+        grayscale[px] = lum;
+        histogram[lum]++;
+      }
+
+      const threshold = computeOtsuThreshold(histogram, totalPixels);
+      const darkCount = countComponents(grayscale, (value) => value < threshold, imageData.width, imageData.height);
+      const lightCount = countComponents(grayscale, (value) => value > threshold, imageData.width, imageData.height);
+
+      let bestCount = Math.max(darkCount, lightCount);
+
+      if (bestCount === 0) {
+        const relaxedDark = countComponents(
+          grayscale,
+          (value) => value < threshold,
+          imageData.width,
+          imageData.height,
+          0.0009
+        );
+        const relaxedLight = countComponents(
+          grayscale,
+          (value) => value > threshold,
+          imageData.width,
+          imageData.height,
+          0.0009
+        );
+        bestCount = Math.max(relaxedDark, relaxedLight);
+      }
+
+      if (bestCount === 0) {
+        setCountResult(0);
+        setCountError('AutoCount could not identify distinct items. Try improving focus, lighting, or adjusting the zone.');
+      } else {
+        setCountResult(bestCount);
+      }
     } catch (countingError: any) {
       console.error('AutoCount failed', countingError);
       setCountError(countingError?.message ?? 'Unable to count items in this capture.');
