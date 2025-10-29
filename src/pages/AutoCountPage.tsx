@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Header } from '../components/Header';
 import { BottomNav } from '../components/BottomNav';
 import { Loader2, Move, RotateCcw, CameraOff, Check } from 'lucide-react';
+import { supabase } from '../services/supabaseClient';
 
 type OverlayRect = {
   x: number;
@@ -14,6 +15,13 @@ type OverlayRect = {
 type DragHandle = 'move' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
+
+type CountAnnotation = {
+  label: string;
+  centerX: number;
+  centerY: number;
+  confidence?: number | null;
+};
 
 const computeOtsuThreshold = (histogram: Uint32Array, totalPixels: number) => {
   let sum = 0;
@@ -133,6 +141,7 @@ export const AutoCountPage: React.FC = () => {
   const [isCounting, setIsCounting] = useState(false);
   const [countResult, setCountResult] = useState<number | null>(null);
   const [countError, setCountError] = useState<string | null>(null);
+  const [annotations, setAnnotations] = useState<CountAnnotation[]>([]);
 
   const startCamera = useCallback(async () => {
     try {
@@ -181,6 +190,7 @@ export const AutoCountPage: React.FC = () => {
     setCapturedImage(null);
     setCountResult(null);
     setCountError(null);
+    setAnnotations([]);
     setOverlayRect({ x: 0.15, y: 0.15, width: 0.7, height: 0.6 });
     if (videoRef.current) {
       videoRef.current.currentTime = 0;
@@ -211,6 +221,7 @@ export const AutoCountPage: React.FC = () => {
     setCapturedImage(dataUrl);
     setCountResult(null);
     setCountError(null);
+    setAnnotations([]);
     video.pause();
   };
 
@@ -341,6 +352,44 @@ export const AutoCountPage: React.FC = () => {
         cropCanvas.height
       );
 
+      const cropDataUrl = cropCanvas.toDataURL('image/png');
+
+      try {
+        const { data, error } = await supabase.functions.invoke<{
+          count: number;
+          items?: Array<{ label?: string; center_x?: number; center_y?: number; confidence?: number }>;
+        }>('autocount', {
+          body: { imageDataUrl: cropDataUrl },
+        });
+
+        if (error) {
+          throw new Error(error.message ?? 'AutoCount service error');
+        }
+
+        if (data && typeof data.count === 'number') {
+          const formattedAnnotations: CountAnnotation[] = Array.isArray(data.items)
+            ? data.items
+                .map((item, index) => ({
+                  label: String(item.label ?? index + 1),
+                  centerX: clamp(item.center_x ?? 0.5, 0, 1),
+                  centerY: clamp(item.center_y ?? 0.5, 0, 1),
+                  confidence: typeof item.confidence === 'number' ? item.confidence : null,
+                }))
+                .filter(Boolean)
+            : [];
+
+          setAnnotations(formattedAnnotations);
+          setCountResult(data.count);
+          if (data.count === 0) {
+            setCountError('AutoCount did not detect any parts. Try retaking the photo or adjusting the zone.');
+          }
+          return;
+        }
+      } catch (aiError) {
+        console.warn('AutoCount AI inference failed, falling back to local detection.', aiError);
+        setAnnotations([]);
+      }
+
       const imageData = cropCtx.getImageData(0, 0, cropCanvas.width, cropCanvas.height);
       const totalPixels = imageData.width * imageData.height;
       const histogram = new Uint32Array(256);
@@ -379,6 +428,8 @@ export const AutoCountPage: React.FC = () => {
         );
         bestCount = Math.max(relaxedDark, relaxedLight);
       }
+
+      setAnnotations([]);
 
       if (bestCount === 0) {
         setCountResult(0);
@@ -444,7 +495,7 @@ export const AutoCountPage: React.FC = () => {
               <>
                 <img src={capturedImage} alt="Captured frame" className="absolute inset-0 h-full w-full object-contain bg-black" />
                 <div
-                  className="absolute border-2 border-emerald-400 bg-emerald-500/10 rounded-xl backdrop-blur-[1px] cursor-move"
+                  className="absolute border-2 border-emerald-400 bg-emerald-500/10 rounded-xl backdrop-blur-[1px] cursor-move relative"
                   style={overlayStyle}
                   onPointerDown={(event) => handleOverlayPointerDown('move', event)}
                 >
@@ -483,6 +534,18 @@ export const AutoCountPage: React.FC = () => {
                       />
                     );
                   })}
+                  {annotations.map((annotation) => (
+                    <div
+                      key={annotation.label}
+                      className="absolute flex items-center justify-center rounded-full bg-emerald-500 text-white text-xs font-semibold h-6 w-6 -translate-x-1/2 -translate-y-1/2 shadow-lg shadow-emerald-500/30"
+                      style={{
+                        left: `${annotation.centerX * 100}%`,
+                        top: `${annotation.centerY * 100}%`,
+                      }}
+                    >
+                      {annotation.label}
+                    </div>
+                  ))}
                 </div>
               </>
             )}
