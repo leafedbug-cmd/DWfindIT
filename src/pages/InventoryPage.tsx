@@ -10,7 +10,7 @@ import { Search, Hash, Package } from 'lucide-react';
 // A dedicated component to render a Part
 const PartCard: React.FC<{ part: Part; onCopy: (text: string) => void }> = ({ part, onCopy }) => {
   // CHANGED: Create a formatted string with all the part's details.
-  const partDetailsToCopy = `Part Info:\nPart #: ${part.part_number}\nDescription: ${part.Part_Description || 'N/A'}\nBin Location: ${part.bin_location}`;
+  const partDetailsToCopy = `Part Info:\nPart #: ${part.part_number}\nDescription: ${part.Part_Description || 'N/A'}\nBin Location: ${part.bin_location}\nStore Location: ${part.store_location || 'N/A'}`;
 
   return (
     <>
@@ -20,6 +20,9 @@ const PartCard: React.FC<{ part: Part; onCopy: (text: string) => void }> = ({ pa
       <div>
         <p className="font-semibold text-gray-900 dark:text-gray-100">{part.part_number}</p>
         <p className="text-sm text-gray-500 dark:text-gray-300">{part.Part_Description || 'No description'}</p>
+        {part.store_location && (
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Store: {part.store_location}</p>
+        )}
       </div>
       <div className="text-right ml-auto">
         <p className="font-mono bg-gray-100 text-gray-700 px-2 py-1 rounded-md dark:bg-slate-800 dark:text-gray-100">{part.bin_location}</p>
@@ -31,16 +34,27 @@ const PartCard: React.FC<{ part: Part; onCopy: (text: string) => void }> = ({ pa
 // A dedicated component to render Equipment
 const EquipmentCard: React.FC<{ equipment: Equipment; onCopy: (text: string) => void }> = ({ equipment, onCopy }) => {
   // CHANGED: Create a formatted string with all the equipment's details.
-  const equipmentDetailsToCopy = `Equipment Info:\nMake: ${equipment.make || 'N/A'}\nModel: ${equipment.model || 'N/A'}\nDescription: ${equipment.description || 'N/A'}\nStock #: ${equipment.stock_number}\nSerial #: ${equipment.serial_number || 'N/A'}`;
+  const equipmentDetailsToCopy = `Equipment Info:\nMake: ${equipment.make || 'N/A'}\nModel: ${equipment.model || 'N/A'}\nDescription: ${equipment.description || 'N/A'}\nStock #: ${equipment.stock_number}\nSerial #: ${equipment.serial_number || 'N/A'}\nCustomer #: ${equipment.customer_number || 'N/A'}\nCustomer Name: ${equipment.customer_name || 'N/A'}\nStore Location: ${equipment.store_location || 'N/A'}`;
 
   return (
     <>
       <button onClick={() => onCopy(equipmentDetailsToCopy)} className="flex-shrink-0 mr-4 p-2 rounded-full hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-orange-500 dark:hover:bg-blue-500/20">
         <Package className="h-6 w-6 text-blue-500" />
       </button>
-      <div>
+      <div className="flex-1 min-w-0">
         <p className="font-semibold text-gray-900 dark:text-gray-100">{equipment.make} {equipment.model}</p>
         <p className="text-sm text-gray-500 dark:text-gray-300">{equipment.description || 'No description'}</p>
+        <div className="mt-1 space-y-1 text-xs text-gray-500 dark:text-gray-400">
+          {equipment.customer_number && (
+            <p>Customer #: {equipment.customer_number}</p>
+          )}
+          {equipment.customer_name && (
+            <p>Customer: {equipment.customer_name}</p>
+          )}
+          {equipment.store_location && (
+            <p>Store: {equipment.store_location}</p>
+          )}
+        </div>
       </div>
       <div className="text-right ml-auto">
         <p className="font-mono bg-gray-100 text-gray-700 px-2 py-1 rounded-md dark:bg-slate-800 dark:text-gray-100">{equipment.stock_number}</p>
@@ -85,7 +99,7 @@ export const InventoryPage: React.FC = () => {
         <div className="relative">
           <input
             type="text"
-            placeholder="Search by part #, bin, stock #, or serial #..."
+            placeholder="Search by part #, description, bin, stock #, serial #, customer #, or name..."
             className="w-full pl-10 pr-4 py-2 border rounded-lg shadow-sm focus:ring-orange-500 focus:border-orange-500 dark:bg-slate-900 dark:border-slate-700 dark:text-gray-100 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}

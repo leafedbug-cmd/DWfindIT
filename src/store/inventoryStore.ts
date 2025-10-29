@@ -10,6 +10,7 @@ export interface Part {
   part_number: string;
   Part_Description: string | null;
   bin_location: string;
+  store_location: string | null;
 }
 
 export interface Equipment {
@@ -20,6 +21,9 @@ export interface Equipment {
   make: string | null;
   model: string | null;
   description: string | null;
+  customer_number: string | null;
+  customer_name: string | null;
+  store_location: string | null;
 }
 
 export type InventoryItem = Part | Equipment;
@@ -49,17 +53,17 @@ export const useInventoryStore = create<InventoryState>((set) => ({
         // Parts query STILL filters by store location
         supabase
           .from('parts')
-          .select('id, part_number, Part_Description, bin_location')
+          .select('id, part_number, Part_Description, bin_location, store_location')
           .eq('store_location', storeId)
-          .or(`part_number.ilike.%${searchTerm}%,bin_location.ilike.%${searchTerm}%`)
+          .or(`part_number.ilike.%${searchTerm}%,bin_location.ilike.%${searchTerm}%,Part_Description.ilike.%${searchTerm}%`)
           .limit(25),
         
         // Equipment query NO LONGER filters by store location
         supabase
           .from('equipment')
-          .select('id, stock_number, serial_number, make, model, description')
+          .select('id, stock_number, serial_number, make, model, description, customer_number, customer_name, store_location')
           // REMOVED: .eq('store_location', storeId) to allow global search
-          .or(`stock_number.ilike.%${searchTerm}%,serial_number.ilike.%${searchTerm}%`)
+          .or(`stock_number.ilike.%${searchTerm}%,serial_number.ilike.%${searchTerm}%,customer_number.ilike.%${searchTerm}%,customer_name.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%`)
           .limit(25),
       ]);
 
