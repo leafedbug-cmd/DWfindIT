@@ -23,127 +23,6 @@ type CountAnnotation = {
   confidence?: number | null;
 };
 
-const computeOtsuThreshold = (histogram: Uint32Array, totalPixels: number) => {
-  let sum = 0;
-  for (let i = 0; i < 256; i++) {
-    sum += i * histogram[i];
-  }
-
-  let sumBackground = 0;
-  let weightBackground = 0;
-  let weightForeground = 0;
-
-  let varianceMax = 0;
-  let threshold = 127;
-
-  for (let i = 0; i < 256; i++) {
-    weightBackground += histogram[i];
-    if (weightBackground === 0) continue;
-
-    weightForeground = totalPixels - weightBackground;
-    if (weightForeground === 0) break;
-
-    sumBackground += i * histogram[i];
-
-    const meanBackground = sumBackground / weightBackground;
-    const meanForeground = (sum - sumBackground) / weightForeground;
-    const varianceBetween = weightBackground * weightForeground * (meanBackground - meanForeground) * (meanBackground - meanForeground);
-
-    if (varianceBetween > varianceMax) {
-      varianceMax = varianceBetween;
-      threshold = i;
-    }
-  }
-
-  return threshold;
-};
-
-type Component = {
-  area: number;
-  centerX: number;
-  centerY: number;
-};
-
-const extractComponents = (
-  grayscale: Uint8ClampedArray,
-  comparator: (value: number) => boolean,
-  width: number,
-  height: number,
-  minAreaMultiplier = 0.0015
-): Component[] => {
-  const totalPixels = width * height;
-  const binary = new Uint8Array(totalPixels);
-  for (let i = 0; i < totalPixels; i++) {
-    binary[i] = comparator(grayscale[i]) ? 1 : 0;
-  }
-
-  const visited = new Uint8Array(totalPixels);
-  const stack: number[] = [];
-  const minArea = Math.max(40, Math.round(totalPixels * minAreaMultiplier));
-  const components: Component[] = [];
-
-  const neighbors = [
-    [1, 0],
-    [-1, 0],
-    [0, 1],
-    [0, -1],
-    [1, 1],
-    [1, -1],
-    [-1, 1],
-    [-1, -1],
-  ];
-
-  for (let index = 0; index < totalPixels; index++) {
-    if (!binary[index] || visited[index]) continue;
-
-    let area = 0;
-    let minX = Number.POSITIVE_INFINITY;
-    let maxX = Number.NEGATIVE_INFINITY;
-    let minY = Number.POSITIVE_INFINITY;
-    let maxY = Number.NEGATIVE_INFINITY;
-
-    stack.push(index);
-    visited[index] = 1;
-
-    while (stack.length > 0) {
-      const current = stack.pop()!;
-      area++;
-
-      const x = current % width;
-      const y = Math.floor(current / width);
-
-      minX = Math.min(minX, x);
-      maxX = Math.max(maxX, x);
-      minY = Math.min(minY, y);
-      maxY = Math.max(maxY, y);
-
-      for (const [dx, dy] of neighbors) {
-        const nx = x + dx;
-        const ny = y + dy;
-        if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
-
-        const neighborIndex = ny * width + nx;
-        if (binary[neighborIndex] && !visited[neighborIndex]) {
-          visited[neighborIndex] = 1;
-          stack.push(neighborIndex);
-        }
-      }
-    }
-
-    if (area >= minArea && Number.isFinite(minX) && Number.isFinite(minY)) {
-      const centerX = ((minX + maxX) / 2) / width;
-      const centerY = ((minY + maxY) / 2) / height;
-      components.push({
-        area,
-        centerX: clamp(centerX, 0, 1),
-        centerY: clamp(centerY, 0, 1),
-      });
-    }
-  }
-
-  return components;
-};
-
 export const AutoCountPage: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -435,7 +314,6 @@ export const AutoCountPage: React.FC = () => {
 
       const cropDataUrl = cropCanvas.toDataURL('image/png');
 
-      try {
         const { data, error } = await supabase.functions.invoke<{
           count: number;
           items?: Array<{ label?: string; center_x?: number; center_y?: number; confidence?: number }>;
@@ -447,104 +325,34 @@ export const AutoCountPage: React.FC = () => {
           throw new Error(error.message ?? 'AutoCount service error');
         }
 
-        if (data && typeof data.count === 'number') {
-          const formattedAnnotations: CountAnnotation[] = Array.isArray(data.items)
-            ? data.items
-                .map((item, index) => ({
-                  label: String(item.label ?? index + 1),
-                  centerX: clamp(item.center_x ?? 0.5, 0, 1),
-                  centerY: clamp(item.center_y ?? 0.5, 0, 1),
-                  confidence: typeof item.confidence === 'number' ? item.confidence : null,
-                }))
-                .filter(Boolean)
-            : [];
-
-          setAnnotations(formattedAnnotations);
-          setCountResult(data.count);
-          if (data.count === 0) {
-            setCountError('AutoCount did not detect any parts. Try retaking the photo or adjusting the zone.');
-          } else if (formattedAnnotations.length === 0) {
-            setCountError('AutoCount returned a count but no marker positions. Try retaking the photo.');
-          } else {
-            setCountError(null);
-          }
-          return;
+        if (!data || typeof data.count !== 'number') {
+          throw new Error('AutoCount service did not return a valid count.');
         }
-      } catch (aiError) {
-        console.warn('AutoCount AI inference failed, falling back to local detection.', aiError);
-        setAnnotations([]);
-      }
 
-      const imageData = cropCtx.getImageData(0, 0, cropCanvas.width, cropCanvas.height);
-      const totalPixels = imageData.width * imageData.height;
-      const histogram = new Uint32Array(256);
-      const grayscale = new Uint8ClampedArray(totalPixels);
+        const formattedAnnotations: CountAnnotation[] = Array.isArray(data.items)
+          ? data.items
+              .map((item, index) => ({
+                label: String(item.label ?? index + 1),
+                centerX: clamp(item.center_x ?? 0.5, 0, 1),
+                centerY: clamp(item.center_y ?? 0.5, 0, 1),
+                confidence: typeof item.confidence === 'number' ? item.confidence : null,
+              }))
+              .filter(Boolean)
+          : [];
 
-      for (let i = 0, px = 0; i < imageData.data.length; i += 4, px++) {
-        const r = imageData.data[i];
-        const g = imageData.data[i + 1];
-        const b = imageData.data[i + 2];
-        // Perceptual luminance
-        const lum = Math.round(0.2126 * r + 0.7152 * g + 0.0722 * b);
-        grayscale[px] = lum;
-        histogram[lum]++;
-      }
-
-      const threshold = computeOtsuThreshold(histogram, totalPixels);
-      const darkComponents = extractComponents(
-        grayscale,
-        (value) => value < threshold,
-        imageData.width,
-        imageData.height
-      );
-      const lightComponents = extractComponents(
-        grayscale,
-        (value) => value > threshold,
-        imageData.width,
-        imageData.height
-      );
-
-      let chosenComponents =
-        lightComponents.length > darkComponents.length ? lightComponents : darkComponents;
-
-      if (!chosenComponents.length) {
-        const relaxedDark = extractComponents(
-          grayscale,
-          (value) => value < threshold,
-          imageData.width,
-          imageData.height,
-          0.0009
-        );
-        const relaxedLight = extractComponents(
-          grayscale,
-          (value) => value > threshold,
-          imageData.width,
-          imageData.height,
-          0.0009
-        );
-        chosenComponents = relaxedLight.length > relaxedDark.length ? relaxedLight : relaxedDark;
-      }
-
-      if (!chosenComponents.length) {
-        setAnnotations([]);
-        setCountResult(0);
-        setCountError('AutoCount could not identify distinct items. Try improving focus, lighting, or adjusting the zone.');
-      } else {
-        const generatedAnnotations = chosenComponents
-          .sort((a, b) => a.centerY - b.centerY || a.centerX - b.centerX)
-          .map((component, index) => ({
-            label: String(index + 1),
-            centerX: component.centerX,
-            centerY: component.centerY,
-            confidence: null,
-          }));
-
-        setAnnotations(generatedAnnotations);
-        setCountResult(generatedAnnotations.length);
-        setCountError(null);
-      }
+        setAnnotations(formattedAnnotations);
+        setCountResult(data.count);
+        if (data.count === 0) {
+          setCountError('AutoCount did not detect any parts. Try retaking the photo or adjusting the zone.');
+        } else if (formattedAnnotations.length === 0) {
+          setCountError('AutoCount returned a count but no marker positions. Try retaking the photo.');
+        } else {
+          setCountError(null);
+        }
     } catch (countingError: any) {
       console.error('AutoCount failed', countingError);
+      setAnnotations([]);
+      setCountResult(null);
       setCountError(countingError?.message ?? 'Unable to count items in this capture.');
     } finally {
       setIsCounting(false);
