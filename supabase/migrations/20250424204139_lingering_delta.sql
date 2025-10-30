@@ -1,12 +1,47 @@
-\n\n-- Create equipment table\nCREATE TABLE IF NOT EXISTS equipment (\n  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),\n  stock_number text UNIQUE NOT NULL,\n  serial_number text UNIQUE NOT NULL,\n  customer_number text,\n  customer text,\n  model text,\n  make text,\n  created_at timestamptz DEFAULT now(),\n  updated_at timestamptz DEFAULT now()\n);
-\n\n-- Create indexes for frequently queried columns\nCREATE INDEX IF NOT EXISTS equipment_customer_number_idx ON equipment(customer_number);
-\nCREATE INDEX IF NOT EXISTS equipment_model_idx ON equipment(model);
-\nCREATE INDEX IF NOT EXISTS equipment_make_idx ON equipment(make);
-\n\n-- Enable Row Level Security\nALTER TABLE equipment ENABLE ROW LEVEL SECURITY;
-\n\n-- Create policies\nCREATE POLICY "Allow public read access to equipment"\n  ON equipment\n  FOR SELECT\n  TO public\n  USING (true);
-\n\n-- Create function to update timestamp\nCREATE OR REPLACE FUNCTION update_updated_at_column()\nRETURNS TRIGGER AS $$\nBEGIN\n  NEW.updated_at = CURRENT_TIMESTAMP;
-\n  RETURN NEW;
-\nEND;
-\n$$ language 'plpgsql';
-\n\n-- Create trigger for updating timestamp\nCREATE TRIGGER update_equipment_updated_at\n  BEFORE UPDATE ON equipment\n  FOR EACH ROW\n  EXECUTE FUNCTION update_updated_at_column();
+
+-- Create equipment table
+CREATE TABLE IF NOT EXISTS equipment (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  stock_number text UNIQUE NOT NULL,
+  serial_number text UNIQUE NOT NULL,
+  customer_number text,
+  customer text,
+  model text,
+  make text,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+
+-- Create indexes for frequently queried columns
+CREATE INDEX IF NOT EXISTS equipment_customer_number_idx ON equipment(customer_number);
+CREATE INDEX IF NOT EXISTS equipment_model_idx ON equipment(model);
+CREATE INDEX IF NOT EXISTS equipment_make_idx ON equipment(make);
+
+-- Enable Row Level Security
+ALTER TABLE equipment ENABLE ROW LEVEL SECURITY;
+
+-- Create policies
+CREATE POLICY "Allow public read access to equipment"
+  ON equipment
+  FOR SELECT
+  TO public
+  USING (true);
+
+-- Create function to update timestamp
+CREATE OR REPLACE FUNCTION public.update_updated_at_column()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+BEGIN
+  NEW.updated_at = CURRENT_TIMESTAMP;
+  RETURN NEW;
+END;
+$$;
+
+-- Create trigger for updating timestamp
+CREATE TRIGGER update_equipment_updated_at
+  BEFORE UPDATE ON equipment
+  FOR EACH ROW
+  EXECUTE FUNCTION public.update_updated_at_column();
 ;

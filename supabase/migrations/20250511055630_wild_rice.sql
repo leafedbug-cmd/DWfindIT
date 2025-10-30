@@ -1,23 +1,85 @@
-\n\n-- Enable Row Level Security\nALTER TABLE parts ENABLE ROW LEVEL SECURITY;
-\nALTER TABLE lists ENABLE ROW LEVEL SECURITY;
-\nALTER TABLE list_items ENABLE ROW LEVEL SECURITY;
-\nALTER TABLE equipment ENABLE ROW LEVEL SECURITY;
-\n\n-- Create policies for public read access\nDO $$ \nBEGIN\n  IF NOT EXISTS (\n    SELECT 1 FROM pg_policies \n    WHERE tablename = 'parts' AND policyname = 'Allow public read access to parts'\n  ) THEN\n    CREATE POLICY "Allow public read access to parts"\n      ON parts\n      FOR SELECT\n      TO public\n      USING (true);
-\n  END IF;
-\n\n  IF NOT EXISTS (\n    SELECT 1 FROM pg_policies \n    WHERE tablename = 'lists' AND policyname = 'Allow public access to lists'\n  ) THEN\n    CREATE POLICY "Allow public access to lists"\n      ON lists\n      FOR ALL\n      TO public\n      USING (true)\n      WITH CHECK (true);
-\n  END IF;
-\n\n  IF NOT EXISTS (\n    SELECT 1 FROM pg_policies \n    WHERE tablename = 'list_items' AND policyname = 'Allow public access to list_items'\n  ) THEN\n    CREATE POLICY "Allow public access to list_items"\n      ON list_items\n      FOR ALL\n      TO public\n      USING (true)\n      WITH CHECK (true);
-\n  END IF;
-\n\n  IF NOT EXISTS (\n    SELECT 1 FROM pg_policies \n    WHERE tablename = 'equipment' AND policyname = 'Allow public read access to equipment'\n  ) THEN\n    CREATE POLICY "Allow public read access to equipment"\n      ON equipment\n      FOR SELECT\n      TO public\n      USING (true);
-\n  END IF;
-\nEND $$;
-\n\n-- Create function to update timestamps\nCREATE OR REPLACE FUNCTION update_updated_at_column()\nRETURNS TRIGGER AS $$\nBEGIN\n  NEW.updated_at = now();
-\n  RETURN NEW;
-\nEND;
-\n$$ language 'plpgsql';
-\n\n-- Create function to handle current list updates\nCREATE OR REPLACE FUNCTION update_current_list()\nRETURNS TRIGGER AS $$\nBEGIN\n  IF NEW.is_current = true THEN\n    UPDATE lists\n    SET is_current = false\n    WHERE id != NEW.id;
-\n  END IF;
-\n  RETURN NEW;
-\nEND;
-\n$$ language 'plpgsql';
-;
+
+-- Enable Row Level Security
+ALTER TABLE parts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE lists ENABLE ROW LEVEL SECURITY;
+ALTER TABLE list_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE equipment ENABLE ROW LEVEL SECURITY;
+
+-- Create policies for public read access
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE tablename = 'parts' AND policyname = 'Allow public read access to parts'
+  ) THEN
+    CREATE POLICY "Allow public read access to parts"
+      ON parts
+      FOR SELECT
+      TO public
+      USING (true);
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE tablename = 'lists' AND policyname = 'Allow public access to lists'
+  ) THEN
+    CREATE POLICY "Allow public access to lists"
+      ON lists
+      FOR ALL
+      TO public
+      USING (true)
+      WITH CHECK (true);
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE tablename = 'list_items' AND policyname = 'Allow public access to list_items'
+  ) THEN
+    CREATE POLICY "Allow public access to list_items"
+      ON list_items
+      FOR ALL
+      TO public
+      USING (true)
+      WITH CHECK (true);
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE tablename = 'equipment' AND policyname = 'Allow public read access to equipment'
+  ) THEN
+    CREATE POLICY "Allow public read access to equipment"
+      ON equipment
+      FOR SELECT
+      TO public
+      USING (true);
+  END IF;
+END $$;
+
+-- Create function to update timestamps
+CREATE OR REPLACE FUNCTION public.update_updated_at_column()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$;
+
+-- Create function to handle current list updates
+CREATE OR REPLACE FUNCTION public.update_current_list()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+BEGIN
+  IF NEW.is_current = true THEN
+    UPDATE lists
+    SET is_current = false
+    WHERE id != NEW.id;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+

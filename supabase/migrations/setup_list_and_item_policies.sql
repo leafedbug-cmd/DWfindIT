@@ -14,7 +14,9 @@
 -- Create a helper function to get the current user's ID efficiently.
 CREATE OR REPLACE FUNCTION public.current_auth_uid()
 RETURNS uuid
-LANGUAGE sql STABLE
+LANGUAGE sql
+STABLE
+SET search_path = public
 AS $$
   SELECT auth.uid();
 $$;
