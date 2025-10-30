@@ -15,7 +15,7 @@ serve(async (req: Request): Promise<Response> => {
       headers: {
         ...headers,
         "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        "Access-Control-Allow-Headers": "*",
       },
     });
   }
