@@ -98,7 +98,7 @@ serve(async (req: Request): Promise<Response> => {
     if (!inferenceResponse || !inferenceResponse.ok) {
       const errorText = inferenceResponse ? await inferenceResponse.text() : "No response";
       console.error("YOLO inference error", inferenceResponse?.status, errorText);
-      return new Response(JSON.stringify({ error: "YOLO inference failed" }), {
+      return new Response(JSON.stringify({ error: "YOLO inference failed", details: errorText }), {
         status: 502,
         headers,
       });
